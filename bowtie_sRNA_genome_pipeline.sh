@@ -27,14 +27,14 @@
 
 usage="
     USAGE
-       step1:   load the following modules: bbmap bowtie2 samtools python (default version)
+       step1:   load the following modules: bbmap bowtie samtools python (default version)
        step2:   bash bowtie2_pipeline.sh [options]  
 
     ARGUMENTS
         -d/--dir
         Directory containing read files (can be .DIR .fasta or .txt (raw) format)
 
-        -f 
+        -f/--filter 
         filter for 22G RNAs ('g') 21U RNAs ('u') or both ('gu' or 'ug')
 
         -c/--count
@@ -62,7 +62,7 @@ do
                 DIR="$2"
                 shift
                 ;;
-                -f|filter)
+                -f|--filter)
                 FILTER="$2"
                 shift
                 ;;
@@ -168,7 +168,7 @@ do
                 
                 echo $(date +"%m-%d-%Y_%H:%M")" Mapping ${BASE} 21U RNAs with Bowtie..."
                 
-                bowtie -p 4 -r -S -v 3 -a --best --strata -m 400 /proj/ahmedlab/steve/seq/WS251/genome/bowtie/genome ./filtered/${BASE}_21u.txt ./bowtie_out/${BASE}_21u.sam
+                bowtie -p 4 -r -S -v 3 -a --best --strata -m 1000 /proj/ahmedlab/steve/seq/WS251/genome/bowtie/genome ./filtered/${BASE}_21u.txt ./bowtie_out/${BASE}_21u.sam
         
                 # Convert to bam then sort
 
@@ -189,25 +189,25 @@ do
 
                 echo $(date +"%m-%d-%Y_%H:%M")" Extracting raw sequences from $file ..."
                 
-                python /proj/ahmedlab/steve/seq/util/small_rna_filter.py -o ./all_reads/reads/${BASE}.txt $file
+                python /proj/ahmedlab/steve/seq/util/small_rna_filter.py -o ./filtered/${BASE}_unfiltered.txt $file
 
                 # Map reads using bowtie
                 
                 echo $(date +"%m-%d-%Y_%H:%M")" Mapping ${BASE} with Bowtie..."
                 
-                bowtie -p 4 -r -S -v 3 -a --best --strata -m 400 /proj/ahmedlab/steve/seq/WS251/genome/bowtie/genome ./all_reads/reads/${BASE}.txt ./all_reads/sam/${BASE}.sam
+                bowtie -p 4 -r -S -v 0 -a --best --strata -m 400 /proj/ahmedlab/steve/seq/WS251/genome/bowtie/genome ./filtered/${BASE}_unfiltered.txt ./bowtie_out/${BASE}_unfiltered.sam
         
                 # Convert to bam then sort
 
                 echo $(date +"%m-%d-%Y_%H:%M")" Converting and sorting ${BASE}..."
 
-                samtools view -bS ./22g/sam/${BASE}.sam | samtools sort -o ./all_reads/bam/${BASE}.bam -
+                samtools view -bS ./bowtie_out/${BASE}_unfiltered.sam | samtools sort -o ./bam/${BASE}_unfiltered.bam -
 
                 # Need to index the sorted bam files for visualization
 
                 echo $(date +"%m-%d-%Y_%H:%M")" Indexing ${BASE}..."
 
-                samtools index ./all_reads/bam/${BASE}.bam
+                samtools index ./bam/${BASE}_unfiltered.bam
         fi
 
 done
