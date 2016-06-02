@@ -8,15 +8,14 @@
 # BEFORE RUNNING SCRIPT DO THE FOLLOWING:
 ###############################################################################
 
-# 1. Make sure modules are loaded:
-#       bbmap
+# Make sure modules are loaded:
 #       bowtie2
 #       python (default version)
+#       samtools
 
-# The location of the following files may have to be modified in this script:
-# bowtie index files
-# merge_counts.py and small_rna_filter.py
-# illumina adaptor sequences
+# Check the location of the following files - they may have to be modified in this script:
+#       bowtie index files
+#       merge_counts.py and small_rna_filter.py
 
 # NOTE: Any read processing INCLUDING adapter trimming is not covered in this pipeline and must be performed beforehand.
 
@@ -32,7 +31,7 @@ usage="
 
     ARGUMENTS
         -d/--dir
-        Directory containing read files (can be .DIR .fasta or .txt (raw) format)
+        Directory containing read files (can be .fastq .fasta or .txt (raw) format)
 
         -f/--filter 
         filter for 22G RNAs ('g') 21U RNAs ('u') or both ('gu' or 'ug')
@@ -58,7 +57,7 @@ while [[ $# > 0 ]]
 do
         key="$1"
         case $key in
-                -d|--DIR)
+                -d|--dir)
                 DIR="$2"
                 shift
                 ;;
@@ -67,7 +66,7 @@ do
                 shift
                 ;;
                 -c|--count)
-                COUNT="true"
+                COUNT=true
                 ;;
         esac
 shift
@@ -214,7 +213,7 @@ done
 
 # Create count table using merge_counts.py
 
-if [[ $COUNT == "true" ]]; then
+if [[ $COUNT =true ]]; then
         echo $(date +"%m-%d-%Y_%H:%M")"Merging count files into count table"
         python /proj/ahmedlab/steve/seq/util/merge_counts.py ./count
 fi
