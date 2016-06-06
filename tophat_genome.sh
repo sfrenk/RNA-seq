@@ -63,6 +63,10 @@ do
     case $key in
         -d|--dir)
         DIR="$2"
+        shift
+        ;;
+        -p|--paired)
+        PAIRED="true"
         ;;
     esac
 shift
@@ -97,7 +101,7 @@ fi
 
 echo "$(date +"%m-%d-%Y_%H:%M") Starting pipeline"
 
-for file in ${FASTQ}/*.fastq.gz; do
+for file in ${DIR}/*.fastq.gz; do
     
     SKIPFILE=false
 
@@ -117,8 +121,7 @@ for file in ${FASTQ}/*.fastq.gz; do
             fi
 
             echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${BASE} with Tophat... "        
-            tophat -i 12000 --no-mixed --no-coverage-search --max-multihits 1 -o ./tophat_out/${BASE} -p 4 ${INDEX} ${DIR}/${BASE}_r1.fastq.gz ./${DIR}/${BASE}_r2.fastq.gz
-                /fastq_trimmed/${BASE}_r2.fastq
+            tophat -i 12000 --no-mixed --no-coverage-search --max-multihits 1 -o ./tophat_out/${BASE} -p 4 ${INDEX} ${DIR}/${BASE}_r1.fastq.gz ${DIR}/${BASE}_r2.fastq.gz
 
         else
 
