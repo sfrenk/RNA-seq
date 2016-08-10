@@ -172,7 +172,8 @@ for file in ${DIR}/*.fastq.gz; do
         # Count reads
 
         echo $(date +"%m-%d-%Y_%H:%M")" Counting reads"
-        grep -v '^@' bowtie2_out/${BASE}.sam | cut -f 3 | sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > ./count/${BASE}_counts.txt
+        # The 260 flag marks unmapped reads/secondary mappings
+        awk -F$'\t' '$2 != "260" ' ./bowtie2_out/${BASE}.sam | cut -f 3 | sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > ./count/${BASE}_counts.txt
 
         # Remove sam file
 

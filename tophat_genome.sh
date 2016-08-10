@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ###############################################################################
-# Basic mapping pipeline for paired end data using tophat2 then preparing bam files for IGV
+# Basic pipeline for mapping and counting single/paired end reads using tophat
 ###############################################################################
 
 ###############################################################################
@@ -28,14 +28,16 @@ GTF="/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
 #       command to display software versions used during the run
 modules=$(/nas02/apps/Modules/bin/modulecmd tcsh list 2>&1)
 
+# NOTE: Any read processing INCLUDING adapter trimming is not covered in this pipeline and must be performed beforehand
+
 ###############################################################################
 ###############################################################################
 
 
 usage="
     USAGE
-       step1:   load the following modules: bbmap bowtie samtools python (default version)
-       step2:   bash bowtie2_pipeline.sh [options]  
+       step1:   load the following modules: tophat samtools python subread
+       step2:   bash tophat_genome.sh [options]  
 
     ARGUMENTS
         -d/--dir
@@ -66,7 +68,7 @@ do
         shift
         ;;
         -p|--paired)
-        PAIRED="true"
+        PAIRED=true
         ;;
     esac
 shift
@@ -105,7 +107,7 @@ for file in ${DIR}/*.fastq.gz; do
     
     SKIPFILE=false
 
-    if [[ $PAIRED == "true" ]]; then
+    if [[ $PAIRED = true ]]; then
             
         # Paired end
 
