@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 ###############################################################################
-# Basic pipeline for mapping and counting single/paired end reads using tophat
+# Basic pipeline for mapping and counting single/paired end fasta reads using hisat2
 ###############################################################################
 
 ###############################################################################
@@ -10,7 +10,7 @@
 
 # Make sure modules are loaded:
 #       trim_galore
-#       tophat
+#       hisat2
 #       samtools
 #       subread
 
@@ -20,8 +20,8 @@
 # Hard variables
 ###############################################################################
 
-#       bowtie2 indices
-index="/nas02/home/s/f/sfrenk/proj/seq/WS251/genome/bowtie2/genome"
+#       hisat2 indices
+index="/nas02/home/s/f/sfrenk/proj/seq/WS251/genome/hisat2/genome"
 
 #       gtf annotation file
 gtf="/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
@@ -35,18 +35,18 @@ modules=$(/nas02/apps/Modules/bin/modulecmd tcsh list 2>&1)
 
 usage="
     USAGE
-       step1:   load the following modules: trim_galore tophat samtools subread
-       step2:   bash tophat_genome.sh [options]  
+       step1:   load the following modules: trim_galore hisat2 samtools subread
+       step2:   bash hisat2_genome.sh [options]  
 
     ARGUMENTS
         -d/--dir
-        Directory containing read files (fastq.gz format).
+        Directory containing read files (fasta.gz format).
 
         -p/--paired
-        Use this option if fastq files contain paired-end reads. NOTE: if paired, each pair must consist of two files with the basename ending in '_r1' or '_r2' depending on respective orientation.
+        Use this option if fasta files contain paired-end reads. NOTE: if paired, each pair must consist of two files with the basename ending in '_r1' or '_r2' depending on respective orientation.
 
         -m/--multihits
-        Maximum number of multiple hits allowed during tophat mapping (default = 1).
+        Maximum number of multiple hits allowed during hisat2 mapping (default = 1).
     "
 
 # Set default parameters
@@ -93,7 +93,7 @@ echo "$modules"
 
 # module test
 
-req_modules=("trim_galore" "tophat" "samtools" "subread")
+req_modules=("hisat2" "samtools" "subread")
 
 for i in ${req_modules[@]}; do
     if [[ $modules != *${i}* ]]; then
@@ -111,8 +111,8 @@ if [ ! -d "trimmed" ]; then
     mkdir trimmed
 fi
 
-if [ ! -d "tophat_out" ]; then
-    mkdir tophat_out
+if [ ! -d "hisat2_out" ]; then
+    mkdir hisat2_out
 fi
 
 if [ ! -d "bam" ]; then
@@ -123,9 +123,13 @@ if [ ! -d "count" ]; then
     mkdir count
 fi
 
+if [ -e "total_mapped_reads.txt" ]; then
+    rm "total_mapped_reads.txt"
+fi
+
 echo "$(date +"%m-%d-%Y_%H:%M") Starting pipeline"
 
-for file in ${dir}/*.fastq.gz; do
+for file in ${dir}/*.fasta.gz; do
     
     skipfile=false
 
@@ -133,23 +137,15 @@ for file in ${dir}/*.fastq.gz; do
             
         # paired end
 
-        if [[ ${file:(-11)} == "_1.fastq.gz" ]]; then
+        if [[ ${file:(-11)} == "_1.fasta.gz" ]]; then
         
-            FBASE=$(basename $file .fastq.gz)
-            BASE=${FBASE%_1}
+            Fbase=$(basename $file .fasta.gz)
+            base=${Fbase%_1}
 
-            echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${BASE} with trim_galore..."
+            # Map reads using hisat2
 
-            trim_galore --dont_gzip -o ./trimmed --paired ${dir}/${BASE}_1.fastq.gz ${dir}/${BASE}_2.fastq.gz
-
-            # Map reads using Tophat
-                
-            if [ ! -d ./tophat_out/${BASE} ]; then
-                mkdir ./tophat_out/${BASE}
-            fi
-
-            echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${BASE} with Tophat... "        
-            tophat -i 12000 --no-mixed --no-coverage-search --max-multihits $multihits -o ./tophat_out/${BASE} -p 4 ${index} ./trimmed/${BASE}_1_val_1.fq ./trimmed/${BASE}_2_val_2.fq
+            echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
+            hisat2 -f --max-intronlen 12000 --no-mixed -k $multihits -p 4 -x ${index} -1 ${dir}/${base}_1.fasta.gz -2 ${dir}/${base}_2.fasta.gz -S ./hisat2_out/${base}.sam
 
         else
 
@@ -161,39 +157,37 @@ for file in ${dir}/*.fastq.gz; do
 
         # Single end
 
-        BASE=$(basename $file .fastq.gz)
+        base=$(basename $file .fasta.gz)
 
-        # Trim reads
+        # Map reads using hisat2
 
-        echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${BASE} with trim_galore..."
-
-        trim_galore --dont_gzip -o ./trimmed ${dir}/${BASE}.fastq.gz
-
-        # Map reads using Tophat
-                
-        if [ ! -d ./tophat_out/${BASE} ]; then
-            mkdir ./tophat_out/${BASE}
-        fi
-
-        echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${BASE} with Tophat... "        
-        tophat -i 12000 --no-mixed --no-coverage-search --max-multihits 1 -o ./tophat_out/${BASE} -p 4 ${index} ./trimmed/${BASE}_trimmed.fq
+        echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
+        hisat2 -f --max-intronlen 12000 --no-mixed -k $multihits -p 4 -x ${index} -U $file -S ./hisat2_out/${base}.sam
     fi
 
     if [[ $skipfile = false ]]; then
 
-        echo $(date +"%m-%d-%Y_%H:%M")" Mapped ${BASE}"
+        echo $(date +"%m-%d-%Y_%H:%M")" Mapped ${base}"
 
-        echo "$(date +"%m-%d-%Y_%H:%M") Sorting and indexing ${BASE}.bam"
+        echo "$(date +"%m-%d-%Y_%H:%M") Sorting and indexing ${base}.bam"
 
         # Get rid of unmapped reads
 
-        samtools view -bh -F 4 ./tophat_out/${BASE}/accepted_hits.bam > ./bam/${BASE}.bam
+        samtools view -h -F 4 ./hisat2_out/${base}.sam > ./bam/${base}.bam
 
         # Sort and index
 
-        samtools sort -o ./bam/${BASE}_sorted.bam ./bam/${BASE}.bam
+        samtools sort -o ./bam/${base}_sorted.bam ./bam/${base}.bam
 
-        samtools index ./bam/${BASE}_sorted.bam
+        samtools index ./bam/${base}_sorted.bam
+
+        rm ./hisat2_out/${base}.sam
+        rm ./bam/${base}.bam
+
+        # Extract number of mapped reads
+
+        total_mapped="$(samtools view -c ./bam/${base}_sorted.bam)"
+        printf ${base}"\t"${total_mapped}"\n" >> total_mapped_reads.txt
     fi
 done
 
@@ -201,13 +195,13 @@ echo $(date +"%m-%d-%Y_%H:%M")" Counting reads with featureCounts... "
 
 # Count all files together so the counts will appear in one file
 
-ARRAY=()
+array=()
 
 for file in ./bam/*_sorted.bam
 do
 
-ARRAY+=" "${file}
+array+=" "${file}
 
 done
 
-featureCounts -a ${gtf} -o ./count/counts.txt -T 4 -t exon -g transcript_id${ARRAY}
+featureCounts -a ${gtf} -o ./count/counts.txt -T 4 -t exon -g transcript_id${array}
