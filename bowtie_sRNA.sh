@@ -8,12 +8,13 @@
 #       filtering for 22G and/or 21U RNAs
 #       counting the number of reads mapping to each feature
 
+# NOTE: Quality filtering / adaptor trimming is NOT covered in the pipeline
+
 ###############################################################################
 # BEFORE RUNNING SCRIPT DO THE FOLLOWING:
 ###############################################################################
 
 # 1. Make sure modules are loaded:
-#       trim_galore (if files are in fastq format)
 #       bowtie
 #       samtools
 #       python (default version)
@@ -31,7 +32,7 @@ usage="
         counting the number of reads mapping to each feature
 
     USAGE
-       step1:   load the following modules: bowtie samtools python (default version). If using fastq files, also load trim_galore.
+       step1:   load the following modules: bowtie samtools python (default version).
        step2:   bash bowtie_sRNA.sh [options]  
 
     ARGUMENTS
@@ -39,7 +40,7 @@ usage="
         directory containing read files in fasta.gz, txt.gz or fastq.gz format
         
         -r/--reference
-        Mapping reference (default = mrna)
+        Mapping reference: genome, transposon, mrna, mirna or rdna (default = mrna)
 
         -f/--filter 
         filter for 22G RNAs ('g') 21U RNAs ('u') or both (gu) (default = no filtering)
@@ -127,6 +128,9 @@ case $ref in
     "genome")
     index="/proj/ahmedlab/steve/seq/WS251/genome/bowtie/genome"
     ;;
+    "mirna")
+    index="/proj/ahmedlab/steve/seq/mirna/bowtie/mirna"
+    ;;
     "rdna")
     index="/proj/ahmedlab/steve/seq/rdna/bowtie/rdna"
     ;;
@@ -157,9 +161,6 @@ done
 ###############################################################################
 
 # Make directories
-if [ ! -d "trimmed" ]; then
-    mkdir trimmed
-fi
 if [ ! -d "filtered" ]; then
     mkdir filtered
 fi
@@ -182,74 +183,71 @@ fi
 echo $(date +"%m-%d-%Y_%H:%M")" Starting pipeline..."
 
 for file in ${dir}/*; do
-
-    if [[ ${file:(-9)} == ".fastq.gz" || ${file:(-7)} == ".txt.gz" || ${file:(-9)} == ".fasta.gz" ]]; then
         
-        if [[ ${file:(-9)} == ".fastq.gz" ]]; then
-            base=$(basename $file .fastq.gz)
-
-            echo $(date +"%m-%d-%Y_%H:%M")" ################ processing ${base} ################"
+    # Define basename of sample based on file extension
     
-            # Quality/Adaptor trim reads
-            trim_galore --dont_gzip -o ./trimmed $file
+    if [[ ${file:(-9)} == ".fastq.gz" ]]; then
+        base=$(basename $file .fastq.gz)
+    elif [[ ${file:(-7)} == ".txt.gz" ]]; then
+        base=$(basename $file .txt.gz)
+    elif [[ ${file:(-9)} == ".fasta.gz" ]]; then
+        base=$(basename $file .fasta.gz)
+    elif [[ ${file:(-6)} == ".fa.gz" ]]; then
+        base=$(basename $file .fa.gz)
+    fi
 
-            # Extract 22G and or 21U RNAs or convert all reads to raw format
-            python /proj/ahmedlab/steve/seq/util/small_rna_filter.py ${filter_opt} -o ./filtered/${base}.txt ./trimmed/${base}_trimmed.fq
-        elif [[ ${file:(-7)} == ".txt.gz" ]]; then
+    echo $(date +"%m-%d-%Y_%H:%M")" ################ processing ${base} ################"
 
-            base=$(basename $file .txt.gz)
+    # Extract 22G and or 21U RNAs or convert all reads to raw format
+    
+    python /proj/ahmedlab/steve/seq/util/small_rna_filter.py ${filter_opt} -o ./filtered/${base}.txt $file
 
-            echo $(date +"%m-%d-%Y_%H:%M")" ################ processing ${base} ################"
+    # Map reads using Bowtie
+    
+    echo $(date +"%m-%d-%Y_%H:%M")" Mapping ${base} with Bowtie..."
 
-            # Extract 22G and or 21U RNAs or convert all reads to raw format
-            python /proj/ahmedlab/steve/seq/util/small_rna_filter.py ${filter_opt} -o ./filtered/${base}.txt $file
-        else
-
-            base=$(basename $file .fasta.gz)
-
-            echo $(date +"%m-%d-%Y_%H:%M")" ################ processing ${base} ################"
-
-            # Extract 22G and or 21U RNAs or convert all reads to raw format
-            python /proj/ahmedlab/steve/seq/util/small_rna_filter.py ${filter_opt} -o ./filtered/${base}.txt $file
-        fi
-
-        # Map reads using Bowtie 2
-        echo $(date +"%m-%d-%Y_%H:%M")" Mapping ${base} with Bowtie..."
-
-        bowtie -M 1 -r -S -v ${mismatch} -p 4 --best ${index} ./filtered/${base}.txt ./bowtie_out/${base}.sam
+    bowtie -M 1 -r -S -v ${mismatch} -p 4 --best ${index} ./filtered/${base}.txt ./bowtie_out/${base}.sam
      
-        echo $(date +"%m-%d-%Y_%H:%M")" Mapped ${base}"
+    echo $(date +"%m-%d-%Y_%H:%M")" Mapped ${base}"
         
-        # Convert to bam then sort
+    # Convert to bam then sort
 
-        echo $(date +"%m-%d-%Y_%H:%M")" Converting and sorting ${base}..."
+    echo $(date +"%m-%d-%Y_%H:%M")" Converting and sorting ${base}..."
 
-        samtools view -bh -F 4 ./bowtie_out/${base}.sam > ./bam/${base}.bam
+    samtools view -bh -F 4 ./bowtie_out/${base}.sam > ./bam/${base}.bam
 
-        samtools sort -o ./bam/${base}_sorted.bam ./bam/${base}.bam
+    samtools sort -o ./bam/${base}_sorted.bam ./bam/${base}.bam
 
-        rm ./bam/${base}.bam
+    rm ./bam/${base}.bam
 
-        # Need to index the sorted bam files for visualization
+    # Need to index the sorted bam files for visualization
 
-        echo $(date +"%m-%d-%Y_%H:%M")" indexing ${base}..."
+    echo $(date +"%m-%d-%Y_%H:%M")" indexing ${base}..."
 
-        samtools index ./bam/${base}_sorted.bam
+    samtools index ./bam/${base}_sorted.bam
 
 
-        # count reads that map antisense to genes
-        if [[ $count = true ]]; then
-            if [[ $antisense = false ]]; then
-                echo $(date +"%m-%d-%Y_%H:%M")" counting reads"
-                # The 260 flag marks unmapped reads/secondary mappings
-                awk -F$'\t' '$2 != "260" ' ./bowtie_out/${base}.sam | cut -f 3 | sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > ./count/${base}_counts.txt
+    # Count reads by location/feature
+    
+    if [[ $count = true ]]; then
+        
+        if [[ $antisense = false ]]; then
+            echo $(date +"%m-%d-%Y_%H:%M")" counting reads"
             
-            else
-                echo $(date +"%m-%d-%Y_%H:%M")" counting antisense reads"
+            # Extract and count reads
+            # The 260 flag marks unmapped reads/secondary mappings
+            
+            awk -F$'\t' '$2 != "260" ' ./bowtie_out/${base}.sam | cut -f 3 | sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > ./count/${base}_counts.txt
+            
+        else
+            
+            # Only count reads that map antisense to features
+            
+            echo $(date +"%m-%d-%Y_%H:%M")" counting antisense reads"
 
-                awk -F$'\t' '$2 == "16" ' ./bowtie_out/${base}.sam | cut -f 3 | sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > ./count/${base}_counts.txt
-            fi
+            awk -F$'\t' '$2 == "16" ' ./bowtie_out/${base}.sam | cut -f 3 | sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > ./count/${base}_counts.txt
         fi
+    fi
 
         rm ./bowtie_out/${base}.sam
 
@@ -259,7 +257,6 @@ for file in ${dir}/*; do
         printf ${base}"\t"${total_mapped}"\n" >> total_mapped_reads.txt
 
         echo $(date +"%m-%d-%Y_%H:%M")" ################ ${base} has been processed ################"
-    fi
 done
 
 # Create count table using merge_counts.py
