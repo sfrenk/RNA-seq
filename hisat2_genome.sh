@@ -20,8 +20,8 @@
 # Hard variables
 ###############################################################################
 
-#       bowtie2 indices
-index="/nas02/home/s/f/sfrenk/proj/seq/WS251/genome/bowtie2/genome"
+#       hisat2 indices
+index="/nas02/home/s/f/sfrenk/proj/seq/WS251/genome/hisat2/genome"
 
 #       gtf annotation file
 gtf="/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
@@ -139,17 +139,17 @@ for file in ${dir}/*.fastq.gz; do
 
         if [[ ${file:(-11)} == "_1.fastq.gz" ]]; then
         
-            FBASE=$(basename $file .fastq.gz)
-            BASE=${FBASE%_1}
+            Fbase=$(basename $file .fastq.gz)
+            base=${Fbase%_1}
 
-            echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${BASE} with trim_galore..."
+            echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${base} with trim_galore..."
 
-            trim_galore --dont_gzip -o ./trimmed --paired ${dir}/${BASE}_1.fastq.gz ${dir}/${BASE}_2.fastq.gz
+            trim_galore --dont_gzip -o ./trimmed --paired ${dir}/${base}_1.fastq.gz ${dir}/${base}_2.fastq.gz
 
             # Map reads using hisat2
 
-            echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${BASE} with hisat2... "        
-            hisat2 --max-intronlen 12000 --no-mixed -k $multihits -p 4 -x ${index} -1 ./trimmed/${BASE}_1_val_1.fq -2 ./trimmed/${BASE}_2_val_2.fq -S ./hisat2_out/${BASE}.sam
+            echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
+            hisat2 --max-intronlen 12000 --no-mixed -k $multihits -p 4 -x ${index} -1 ./trimmed/${base}_1_val_1.fq -2 ./trimmed/${base}_2_val_2.fq -S ./hisat2_out/${base}.sam
 
         else
 
@@ -161,38 +161,38 @@ for file in ${dir}/*.fastq.gz; do
 
         # Single end
 
-        BASE=$(basename $file .fastq.gz)
+        base=$(basename $file .fastq.gz)
 
         # Trim reads
 
-        echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${BASE} with trim_galore..."
+        echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${base} with trim_galore..."
 
-        trim_galore --dont_gzip -o ./trimmed ${dir}/${BASE}.fastq.gz
+        trim_galore --dont_gzip -o ./trimmed ${dir}/${base}.fastq.gz
 
         # Map reads using hisat2
 
-        echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${BASE} with hisat2... "        
-        hisat2 --max-intronlen 12000 --no-mixed -k $multihits -p 4 -x ${index} -U ./trimmed/${BASE}_trimmed.fq -S ./hisat2_out/${BASE}.sam
+        echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
+        hisat2 --max-intronlen 12000 --no-mixed -k $multihits -p 4 -x ${index} -U ./trimmed/${base}_trimmed.fq -S ./hisat2_out/${base}.sam
     fi
 
     if [[ $skipfile = false ]]; then
 
-        echo $(date +"%m-%d-%Y_%H:%M")" Mapped ${BASE}"
+        echo $(date +"%m-%d-%Y_%H:%M")" Mapped ${base}"
 
-        echo "$(date +"%m-%d-%Y_%H:%M") Sorting and indexing ${BASE}.bam"
+        echo "$(date +"%m-%d-%Y_%H:%M") Sorting and indexing ${base}.bam"
 
         # Get rid of unmapped reads
 
-        samtools view -h -F 4 ./hisat2_out/${BASE}.sam > ./bam/${BASE}.bam
+        samtools view -h -F 4 ./hisat2_out/${base}.sam > ./bam/${base}.bam
 
         # Sort and index
 
-        samtools sort -o ./bam/${BASE}_sorted.bam ./bam/${BASE}.bam
+        samtools sort -o ./bam/${base}_sorted.bam ./bam/${base}.bam
 
-        samtools index ./bam/${BASE}_sorted.bam
+        samtools index ./bam/${base}_sorted.bam
 
-        rm ./hisat2_out/${BASE}.sam
-        rm ./bam/${BASE}.bam
+        rm ./hisat2_out/${base}.sam
+        rm ./bam/${base}.bam
 
         # Extract number of mapped reads
 
