@@ -45,11 +45,17 @@ usage="
         -f/--filter 
         filter for 22G RNAs ('g') 21U RNAs ('u') or both (gu) (default = no filtering)
 
+        -s/--size
+        If not filtering for 22g or 21u RNAs, you can specify size range of reads to keep by providing min and max length seperated by a comma (eg. to keep reads between 19 and 24 nucleotides (inclusive), use '-s 19,24' (Default size range: 18 to 30 nucleotides)
+
         -c/--count
         count reads and compile read counts from each sample into a count table
 
         -m/--mismatch
         set maximum number of base mismatches allowed during mapping (default = 0)
+
+        -l/--multi
+        set maximum number of multiple alignments allowed for a particular read (note: any read exceding this number of alignments will be asigned to one of the alignments at random) (default = 1)
 
         -a/--antisense
         if --count option is selected, only reads that map antisense to reference sequence are kept
@@ -58,7 +64,9 @@ usage="
 
 ref="mrna"
 mismatch=0
+multi=1
 filter=""
+size="18,30"
 count=false
 antisense=false
 
@@ -83,9 +91,18 @@ do
             ;;
             -m|--mismatch)
             mismatch="$2"
+            shift
             ;;
-            -f|filter)
+            -l|--multi)
+            multi="$2"
+            shift
+            ;;
+            -f|--filter)
             filter="$2"
+            shift
+            ;;
+            -s|--size)
+            size="$2"
             shift
             ;;
             -c|--count)
@@ -142,7 +159,7 @@ esac
 modules=$(/nas02/apps/Modules/bin/modulecmd tcsh list 2>&1)
 echo "$modules"
 
-# module test
+# Module test
 
 if [[ $count = true ]]; then
     req_modules=("bowtie" "samtools" "python")
@@ -157,10 +174,19 @@ for i in ${req_modules[@]}; do
     fi
 done
 
+# Print run parameters to file
+
+if [ -e "run_parameters.txt" ]; then
+    rm "run_parameters.txt"
+fi
+
+printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: bowtie small RNA\n\nParameters:\n\tsample directory: ${dir}\n\tref: ${ref}\n\tmismatches: ${mismatch}\n\tmultihits: ${multi}\n\tsmall RNA type filter: ${filter}\n\tsize range: ${size}\n\tcount reads: ${count}\n\tcount only antisense reads: ${antisense}\n\nModules: ${modules}\n\nSamples:" > run_parameters.txt
+
 ###############################################################################
 ###############################################################################
 
 # Make directories
+
 if [ ! -d "filtered" ]; then
     mkdir filtered
 fi
@@ -173,6 +199,8 @@ fi
 if [ ! -d "bam" ]; then
     mkdir bam
 fi
+
+# Remove "total_mapped_reads.txt" file if it exists already
 
 if [ -e "total_mapped_reads.txt" ]; then
     rm "total_mapped_reads.txt"
@@ -188,6 +216,8 @@ for file in ${dir}/*; do
     
     if [[ ${file:(-9)} == ".fastq.gz" ]]; then
         base=$(basename $file .fastq.gz)
+    elif [[ ${file:(-6)} == ".fq.gz" ]]; then
+        base=$(basename $file .fq.gz)
     elif [[ ${file:(-7)} == ".txt.gz" ]]; then
         base=$(basename $file .txt.gz)
     elif [[ ${file:(-9)} == ".fasta.gz" ]]; then
@@ -198,15 +228,17 @@ for file in ${dir}/*; do
 
     echo $(date +"%m-%d-%Y_%H:%M")" ################ processing ${base} ################"
 
+    printf "\n\t"$base >> run_parameters.txt
+
     # Extract 22G and or 21U RNAs or convert all reads to raw format
     
-    python /proj/ahmedlab/steve/seq/util/small_rna_filter.py ${filter_opt} -o ./filtered/${base}.txt $file
+    python /proj/ahmedlab/steve/seq/util/small_rna_filter.py $filter_opt -s $size -o ./filtered/${base}.txt $file
 
     # Map reads using Bowtie
     
     echo $(date +"%m-%d-%Y_%H:%M")" Mapping ${base} with Bowtie..."
 
-    bowtie -M 1 -r -S -v ${mismatch} -p 4 --best ${index} ./filtered/${base}.txt ./bowtie_out/${base}.sam
+    bowtie -M $multi -r -S -v $mismatch -p 4 --best $index ./filtered/${base}.txt ./bowtie_out/${base}.sam
      
     echo $(date +"%m-%d-%Y_%H:%M")" Mapped ${base}"
         
@@ -237,7 +269,7 @@ for file in ${dir}/*; do
             # Extract and count reads
             # The 260 flag marks unmapped reads/secondary mappings
             
-            awk -F$'\t' '$2 != "260" ' ./bowtie_out/${base}.sam | cut -f 3 | sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > ./count/${base}_counts.txt
+            awk -F$'\t' '$2 != "260" ' ./bowtie_out/${base}.sam | grep -v @ | cut -f 3 | sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > ./count/${base}_counts.txt
             
         else
             
@@ -245,18 +277,18 @@ for file in ${dir}/*; do
             
             echo $(date +"%m-%d-%Y_%H:%M")" counting antisense reads"
 
-            awk -F$'\t' '$2 == "16" ' ./bowtie_out/${base}.sam | cut -f 3 | sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > ./count/${base}_counts.txt
+            awk -F$'\t' '$2 == "16" ' ./bowtie_out/${base}.sam | grep -v @ | cut -f 3 |  sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > ./count/${base}_counts.txt
         fi
     fi
 
-        rm ./bowtie_out/${base}.sam
+    rm ./bowtie_out/${base}.sam
 
-        # Get total number of mapped reads
+    # Get total number of mapped reads
 
-        total_mapped="$(samtools view -c ./bam/${base}_sorted.bam)"
-        printf ${base}"\t"${total_mapped}"\n" >> total_mapped_reads.txt
+    total_mapped="$(samtools view -c ./bam/${base}_sorted.bam)"
+    printf ${base}"\t"${total_mapped}"\n" >> total_mapped_reads.txt
 
-        echo $(date +"%m-%d-%Y_%H:%M")" ################ ${base} has been processed ################"
+    echo $(date +"%m-%d-%Y_%H:%M")" ################ ${base} has been processed ################"
 done
 
 # Create count table using merge_counts.py

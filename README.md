@@ -2,24 +2,17 @@
 
 ## Pipelines for performing RNA-seq analysis in C elegans
 
-## bowtie2_pipeline.sh
+These pipelines have been designed to automate RNA-seq data processing in a batch of samples. The final output includes sorted and indexed bam files and read count tables that can be further analyzed using the appropriate scripts provided in the seq-utilities repo. The pipelines also create a file named run_parameters.txt, which contains all the parameters and software versions used in the analysis.
 
-Basic gene expression analysis pipeline for mapping single or paired end fastq reads to mRNA or transposon consensus sequences with bowtie2.
+The pipelines have been written for use on the Killdevil computing cluster at UNC - Chapel Hill, but they can be used on any system with a few slight modifications.
 
 ## bowtie_sRNA.sh
 
 Analysis pipeline for small RNA reads. Reads in raw/fasta/fastq format are mapped to specified reference sequence and can optionally be: 
 	a) filtered for 22G and/or 21U RNAs
 	b) counted
-
-## tophat_genome.sh
-
-Basic pipeline for mapping and counting single/paired end reads using tophat. This pipeline has been superseded by the hisat2 pipelines.
+Note that read trimming and quality filtering are not included in this pipeline, and should therefore be performed using separate tools beforehand.
 
 ## hisat2_genome.sh
 
-Basic pipeline for mapping and counting single/paired end reads using hisat2, a much faster equivalent to tophat made by the same developers.
-
-## hisat2_fasta.sh
-
-A hisat2 pipeline that takes reads in fasta format and does not include a trimming/filtering step. This pipeline is largely used for mapping small RNA reads to the genome.
+Basic pipeline for mapping and counting single/paired end reads using hisat2, a much faster equivalent to tophat made by the same developers. This pipeline includes read trimming and quality filtering.
