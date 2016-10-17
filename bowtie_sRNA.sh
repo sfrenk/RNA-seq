@@ -40,13 +40,13 @@ usage="
         directory containing read files in fasta.gz, txt.gz or fastq.gz format
         
         -r/--reference
-        Mapping reference: genome, transposon, mrna, mirna or rdna (default = mrna)
+        Mapping reference: genome, transposons, mrna, mirna, telomere or rdna (default = mrna)
 
         -f/--filter 
-        filter for 22G RNAs ('g') 21U RNAs ('u') or both (gu) (default = no filtering)
+        Filter reads based on the first nucleotide (eg. to select 22g RNAs, use options -f g -s 22,22
 
         -s/--size
-        If not filtering for 22g or 21u RNAs, you can specify size range of reads to keep by providing min and max length seperated by a comma (eg. to keep reads between 19 and 24 nucleotides (inclusive), use '-s 19,24' (Default size range: 18 to 30 nucleotides)
+        Specify size range of reads to keep by providing min and max length seperated by a comma (eg. to keep reads between 19 and 24 nucleotides (inclusive), use '-s 19,24' (Default size range: 18 to 30 nucleotides)
 
         -c/--count
         count reads and compile read counts from each sample into a count table
@@ -65,7 +65,7 @@ usage="
 ref="mrna"
 mismatch=0
 multi=1
-filter=""
+filter="A,T,C,G"
 size="18,30"
 count=false
 antisense=false
@@ -110,6 +110,7 @@ do
             ;;
             -a|--antisense)
             antisense=true
+            ;;
     esac
 shift
 done
@@ -119,19 +120,6 @@ done
 if [[ ${dir:(-1)} == "/" ]]; then
     dir=${dir::${#dir}-1}
 fi
-
-# parse filter option
-case $filter in
-    "g")
-    filter_opt="-g"
-    ;;
-    "u")
-    filter_opt="-u"
-    ;;
-    "gu"|"ug")
-    filter_opt="-u -g"
-    ;;
-esac
 
 # Select bowtie index based on reference
 
@@ -150,6 +138,9 @@ case $ref in
     ;;
     "rdna")
     index="/proj/ahmedlab/steve/seq/rdna/bowtie/rdna"
+    ;;
+    "telomere")
+    index="/proj/ahmedlab/steve/seq/telomere/bowtie/telomere"
     ;;
 esac
 
@@ -180,7 +171,7 @@ if [ -e "run_parameters.txt" ]; then
     rm "run_parameters.txt"
 fi
 
-printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: bowtie small RNA\n\nParameters:\n\tsample directory: ${dir}\n\tref: ${ref}\n\tmismatches: ${mismatch}\n\tmultihits: ${multi}\n\tsmall RNA type filter: ${filter}\n\tsize range: ${size}\n\tcount reads: ${count}\n\tcount only antisense reads: ${antisense}\n\nModules: ${modules}\n\nSamples:" > run_parameters.txt
+printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: bowtie small RNA\n\nParameters:\n\tsample directory: ${dir}\n\tref: ${ref}\n\tmismatches: ${mismatch}\n\tmultihits: ${multi}\n\first nucleotide: ${filter}\n\tsize range: ${size}\n\tcount reads: ${count}\n\tcount only antisense reads: ${antisense}\n\nModules: ${modules}\n\nSamples:" > run_parameters.txt
 
 ###############################################################################
 ###############################################################################
@@ -232,7 +223,7 @@ for file in ${dir}/*; do
 
     # Extract 22G and or 21U RNAs or convert all reads to raw format
     
-    python /proj/ahmedlab/steve/seq/util/small_rna_filter.py $filter_opt -s $size -o ./filtered/${base}.txt $file
+    python /proj/ahmedlab/steve/seq/util/small_rna_filter.py -f $filter -s $size -o ./filtered/${base}.txt $file
 
     # Map reads using Bowtie
     
@@ -294,6 +285,6 @@ done
 # Create count table using merge_counts.py
 
 if [[ $count = true ]]; then
-    echo $(date +"%m-%d-%Y_%H:%M")"Merging count files into count table"
+    echo $(date +"%m-%d-%Y_%H:%M")" Merging count files into count table"
     python /proj/ahmedlab/steve/seq/util/merge_counts.py ./count
 fi
