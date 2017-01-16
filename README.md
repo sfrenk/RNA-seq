@@ -15,4 +15,8 @@ Note that read trimming and quality filtering are not included in this pipeline,
 
 ## hisat2_genome.sh
 
-Basic pipeline for mapping and counting single/paired end reads using hisat2, a much faster equivalent to tophat made by the same developers. This pipeline includes read trimming and quality filtering.
+Basic pipeline for mapping and counting single/paired end reads using hisat2, a much faster equivalent to tophat made by the same developers. This pipeline includes (optional) read trimming and quality filtering.
+
+## bowtie2.sh
+
+Basic pipeline for mapping and counting single/paired end reads using bowtie2. This pipeline includes (optional) read trimming and quality filtering.

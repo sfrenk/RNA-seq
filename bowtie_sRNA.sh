@@ -31,6 +31,8 @@ usage="
         filtering for 22G and/or 21U RNAs
         counting the number of reads mapping to each feature
 
+    This script should be run with four processors
+
     USAGE
        step1:   load the following modules: bowtie samtools python (default version).
        step2:   bash bowtie_sRNA.sh [options]  
@@ -40,13 +42,16 @@ usage="
         directory containing read files in fasta.gz, txt.gz or fastq.gz format
         
         -r/--reference
-        Mapping reference: genome, transposons, mrna, mirna, telomere or rdna (default = mrna)
+        Mapping reference: genome, transposons, mrna, mirna, pirna, telomere or rdna (default = genome)
 
         -f/--filter 
         Filter reads based on the first nucleotide (eg. to select 22g RNAs, use options -f g -s 22,22
 
         -s/--size
         Specify size range of reads to keep by providing min and max length seperated by a comma (eg. to keep reads between 19 and 24 nucleotides (inclusive), use '-s 19,24' (Default size range: 18 to 30 nucleotides)
+
+        -t/--trim_a
+        Trim 3' A nucleotides from reads before filtering/mapping
 
         -c/--count
         count reads and compile read counts from each sample into a count table
@@ -62,13 +67,15 @@ usage="
     "
 # Set default parameters
 
-ref="mrna"
+gtf="/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
+ref="genome"
 mismatch=0
 multi=1
 filter="A,T,C,G"
 size="18,30"
 count=false
 antisense=false
+trim_a=""
 
 # Parse command line parameters
 
@@ -111,8 +118,11 @@ do
             -a|--antisense)
             antisense=true
             ;;
+            -t|--trim_a)
+            trim_a="-a"
+            ;;
     esac
-shift
+    shift
 done
 
 # Remove trailing "/" from dir directory if present
@@ -142,6 +152,12 @@ case $ref in
     "telomere")
     index="/proj/ahmedlab/steve/seq/telomere/bowtie/telomere"
     ;;
+    "trna")
+    index="/nas02/home/s/f/sfrenk/seq/trna/bowtie/trna"
+    ;;
+    "pirna")
+    index="/nas02/home/s/f/sfrenk/seq/pirna/bowtie/pirna"
+    ;;
 esac
 
 
@@ -153,7 +169,11 @@ echo "$modules"
 # Module test
 
 if [[ $count = true ]]; then
-    req_modules=("bowtie" "samtools" "python")
+    if [[ $ref == "genome" ]]; then
+        req_modules=("bowtie" "samtools" "subread")
+    else
+        req_modules=("bowtie" "samtools" "python")
+    fi
 else
     req_modules=("bowtie" "samtools")
 fi
@@ -223,7 +243,7 @@ for file in ${dir}/*; do
 
     # Extract 22G and or 21U RNAs or convert all reads to raw format
     
-    python /proj/ahmedlab/steve/seq/util/small_rna_filter.py -f $filter -s $size -o ./filtered/${base}.txt $file
+    python /proj/ahmedlab/steve/seq/util/small_rna_filter.py -f $filter -s $size -o ./filtered/${base}.txt $trim_a $file
 
     # Map reads using Bowtie
     
@@ -252,7 +272,7 @@ for file in ${dir}/*; do
 
     # Count reads by location/feature
     
-    if [[ $count = true ]]; then
+    if [[ $count = true ]] && [[ $ref != "genome" ]]; then
         
         if [[ $antisense = false ]]; then
             echo $(date +"%m-%d-%Y_%H:%M")" counting reads"
@@ -285,6 +305,33 @@ done
 # Create count table using merge_counts.py
 
 if [[ $count = true ]]; then
-    echo $(date +"%m-%d-%Y_%H:%M")" Merging count files into count table"
-    python /proj/ahmedlab/steve/seq/util/merge_counts.py ./count
+
+    if [[ $ref == "genome" ]]; then
+        ARRAY=()
+
+        for file in ./bam/*_sorted.bam
+        do
+
+        ARRAY+=" "${file}
+
+        done
+
+        if [[ $antisense = true ]]; then
+            
+            featureCounts -s 2 -a ${gtf} -o ./count/counts_output.txt -T 4 -t exon -g gene_name${ARRAY}
+
+        else
+            featureCounts -a ${gtf} -o ./count/counts_output.txt -T 4 -t exon -g gene_name${ARRAY}
+        fi
+        
+        # Clean up sample names in count file
+
+        sed -e "2s/\.\/bam\///g" ./count/counts_output.txt | sed -e "2s/_sorted\.bam//g" > ./count/counts.txt
+
+    else
+
+        echo $(date +"%m-%d-%Y_%H:%M")" Merging count files into count table"
+        python /proj/ahmedlab/steve/seq/util/merge_counts.py ./count
+
+    fi
 fi

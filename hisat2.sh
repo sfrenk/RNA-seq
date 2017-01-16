@@ -34,6 +34,10 @@ modules=$(/nas02/apps/Modules/bin/modulecmd tcsh list 2>&1)
 
 
 usage="
+    Basic pipeline for mapping and counting single/paired end reads using hisat2
+
+    This script should be run with four processors
+
     USAGE
        step1:   load the following modules: trim_galore hisat2 samtools subread
        step2:   bash hisat2_genome.sh [options]  
@@ -47,12 +51,15 @@ usage="
 
         -m/--multihits
         Maximum number of multiple hits allowed during hisat2 mapping (default = 1).
+
+        -t/--trim
+        Trim reads with trim_galore before mapping
     "
 
 # Set default parameters
 paired=false
 multihits=1
-
+trim=false
 
 # Parse command line parameters
 
@@ -76,6 +83,9 @@ do
         --m|--multihits)
         multihits=$1
         shift
+        ;;
+        -t|--trim)
+        trim=true
         ;;
     esac
 shift
@@ -108,14 +118,14 @@ if [ -e "run_parameters.txt" ]; then
     rm "run_parameters.txt"
 fi
 
-printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: hisat2\n\nParameters:sample directory: ${dir}\n\tmultihits: ${multihits}\n\tpaired end: ${paired}\n\nModules: ${modules}\n\nSamples:" > run_parameters.txt
+printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: hisat2\n\nParameters:sample directory: ${dir}\n\tmultihits: ${multihits}\n\tpaired end: ${paired}\n\ttrim: ${trim}\n\nModules: ${modules}\n\nSamples:" > run_parameters.txt
 
 ###############################################################################
 ###############################################################################
 
 # Prepare directories
 
-if [ ! -d "trimmed" ]; then
+if [ ! -d "trimmed" ] && [[ $trim = true ]]; then
     mkdir trimmed
 fi
 
@@ -154,12 +164,25 @@ for file in ${dir}/*.fastq.gz; do
 
             echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${base} with trim_galore..."
 
-            trim_galore --dont_gzip -o ./trimmed --paired ${dir}/${base}_1.fastq.gz ${dir}/${base}_2.fastq.gz
+            if [[ $trim = true ]]; then
+
+                # Trim reads
+
+                echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${base} with trim_galore..."
+                trim_galore --dont_gzip -o ./trimmed --paired ${dir}/${base}_1.fastq.gz ${dir}/${base}_2.fastq.gz
+
+                fastq_r1="./trimmed/${base}_1_val_1.fq"
+                fastq_r2="/trimmed/${base}_2_val_2.fq"
+            else
+
+                fastq_r1="${dir}/${base}_1.fastq.gz"
+                fastq_r2="${dir}/${base}_2.fastq.gz"
+            fi
 
             # Map reads using hisat2
 
             echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
-            hisat2 --max-intronlen 12000 --no-mixed -k $multihits -p 4 -x ${index} -1 ./trimmed/${base}_1_val_1.fq -2 ./trimmed/${base}_2_val_2.fq -S ./hisat2_out/${base}.sam
+            hisat2 --max-intronlen 12000 --no-mixed -k $multihits -p 4 -x ${index} -1 $fastq_r1 -2 $fastq_r2 -S ./hisat2_out/${base}.sam
 
         else
 
@@ -175,16 +198,23 @@ for file in ${dir}/*.fastq.gz; do
 
         printf "\n\t"$base >> run_parameters.txt
 
-        # Trim reads
+        if [[ $trim = true ]]; then
 
-        echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${base} with trim_galore..."
+            # Trim reads
 
-        trim_galore --dont_gzip -o ./trimmed ${dir}/${base}.fastq.gz
+            echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${base} with trim_galore..."
+
+            trim_galore --dont_gzip -o ./trimmed ${dir}/${base}.fastq.gz
+            fastq_file="./trimmed/${base}_trimmed.fq"
+        else
+
+            fastq_file="${dir}/${base}.fastq.gz"
+        fi
 
         # Map reads using hisat2
 
         echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
-        hisat2 --max-intronlen 12000 --no-mixed -k $multihits -p 4 -x ${index} -U ./trimmed/${base}_trimmed.fq -S ./hisat2_out/${base}.sam
+        hisat2 --max-intronlen 12000 --no-mixed -k $multihits -p 4 -x ${index} -U $fastq_file -S ./hisat2_out/${base}.sam
     fi
 
     if [[ $skipfile = false ]]; then
@@ -222,8 +252,8 @@ ARRAY=()
 for file in ./bam/*_sorted.bam
 do
 
-ARRAY+=" "${file}
+    ARRAY+=" "${file}
 
 done
 
-featureCounts -a ${gtf} -o ./count/counts.txt -T 4 -t exon -g transcript_id${ARRAY}
+featureCounts -a ${gtf} -o ./count/counts.txt -T 4 -t exon -g gene_name${ARRAY}
