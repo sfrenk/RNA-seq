@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
-#SBATCH -n 8
-#SBATCH -N 1
-#SBATCH -t 5-0
-
-module add bbmap hisat2 subread samtools
 
 ###############################################################################
 # Basic pipeline for mapping and counting single/paired end reads using hisat2
-# Run this script on LongLeaf
 ###############################################################################
+
+###############################################################################
+# BEFORE RUNNING SCRIPT DO THE FOLLOWING:
+###############################################################################
+
+# Make sure modules are loaded:
+#       trim_galore
+#       hisat2
+#       samtools
+#       subread
+
+# Check the location of the hard variables
 
 ###############################################################################
 # Hard variables
@@ -17,11 +23,11 @@ module add bbmap hisat2 subread samtools
 #       hisat2 indices
 index="/nas02/home/s/f/sfrenk/proj/seq/WS251/genome/hisat2/genome"
 
-#       gtf annotation file for genes
+#       gtf annotation file
 gtf="/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
 
-#       gtf annotation file for repeats
-rmsk_gtf="/proj/ahmedlab/steve/seq/transposons/ce11_rebpase/ce11_rmsk_original.gtf"
+#       command to display software versions used during the run
+modules=$(/nas02/apps/Modules/bin/modulecmd tcsh list 2>&1)
 
 ###############################################################################
 ###############################################################################
@@ -29,6 +35,8 @@ rmsk_gtf="/proj/ahmedlab/steve/seq/transposons/ce11_rebpase/ce11_rmsk_original.g
 
 usage="
     Basic pipeline for mapping and counting single/paired end reads using hisat2
+
+    This script should be run with four processors
 
     USAGE
        step1:   load the following modules: trim_galore hisat2 samtools subread
@@ -39,10 +47,10 @@ usage="
         Directory containing read files (fastq.gz format).
 
         -p/--paired
-        Use this option if fastq files contain paired-end reads. NOTE: if paired, each pair must consist of two files with the basename ending in '_1' or '_2' depending on respective orientation.
+        Use this option if fastq files contain paired-end reads. NOTE: if paired, each pair must consist of two files with the basename ending in '_r1' or '_r2' depending on respective orientation.
 
         -t/--trim
-        Trim reads with trim_galore before mapping. If using this option, also supply the adapter sequence.
+        Trim reads with trim_galore before mapping
     "
 
 # Set default parameters
@@ -71,8 +79,6 @@ do
         ;;
         -t|--trim)
         trim=true
-        adapter="$2"
-        shift
         ;;
     esac
 shift
@@ -84,15 +90,28 @@ if [[ ${dir:(-1)} == "/" ]]; then
     dir=${dir::${#dir}-1}
 fi
 
+# Print out loaded modules to keep a record of which software versions were used in this run
+
+echo "$modules"
+
+# module test
+
+req_modules=("trim_galore" "hisat2" "samtools" "subread")
+
+for i in ${req_modules[@]}; do
+    if [[ $modules != *${i}* ]]; then
+        echo "ERROR: Please load ${i}"
+        exit 1
+    fi
+done
+
 # Print run parameters to file
 
 if [ -e "run_parameters.txt" ]; then
     rm "run_parameters.txt"
 fi
 
-printf "$(date +"%m-%d-%Y_%H:%M")\n\nPipeline: hisat2\n\nParameters:sample directory: ${dir}\n\tpaired end: ${paired}\n\ttrim: ${trim} apadter=${adapter}\n" > run_parameters.txt
-
-module list &>> run_parameters.txt
+printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: hisat2\n\nParameters:sample directory: ${dir}\n\tmultihits: ${multihits}\n\tpaired end: ${paired}\n\ttrim: ${trim}\n\nModules: ${modules}\n\nSamples:" > run_parameters.txt
 
 ###############################################################################
 ###############################################################################
@@ -136,16 +155,17 @@ for file in ${dir}/*.fastq.gz; do
 
             printf "\n\t"$base >> run_parameters.txt
 
+            echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${base} with trim_galore..."
+
             if [[ $trim = true ]]; then
 
                 # Trim reads
 
-                echo "$(date +"%m-%d-%Y_%H:%M") Trimming ${base} with bbduk..."
-                
-                bbduk.sh in1=${dir}/${base}_1.fastq.gz in2=${dir}/${base}_2.fastq.gz out1=./trimmed/${base}_1.fastq.gz out2=./trimmed/${base}_2.fastq.gz literal=${adapter} ktrim=r overwrite=true k=23 mink=11 hdist=1 tpe tbo
+                echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${base} with trim_galore..."
+                trim_galore --dont_gzip -o ./trimmed --paired ${dir}/${base}_1.fastq.gz ${dir}/${base}_2.fastq.gz
 
-                fastq_r1="./trimmed/${base}_1.fastq.gz"
-                fastq_r2="./trimmed/${base}_1.fastq.gz"
+                fastq_r1="./trimmed/${base}_1_val_1.fq"
+                fastq_r2="/trimmed/${base}_2_val_2.fq"
             else
 
                 fastq_r1="${dir}/${base}_1.fastq.gz"
@@ -155,7 +175,7 @@ for file in ${dir}/*.fastq.gz; do
             # Map reads using hisat2
 
             echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
-            hisat2 --max-intronlen 12000 --no-mixed -p $SLURM_NTASKS -x ${index} -1 $fastq_r1 -2 $fastq_r2 -S ./hisat2_out/${base}.sam
+            hisat2 --max-intronlen 12000 --no-mixed -p 4 -x ${index} -1 $fastq_r1 -2 $fastq_r2 -S ./hisat2_out/${base}.sam
 
         else
 
@@ -175,26 +195,24 @@ for file in ${dir}/*.fastq.gz; do
 
             # Trim reads
 
-            echo "$(date +"%m-%d-%Y_%H:%M") Trimming ${base} with bbduk..."
+            echo $(date +"%m-%d-%Y_%H:%M")" Trimming ${base} with trim_galore..."
 
-            bbduk.sh in=${file} out=./trimmed/${base}.fastq.gz literal=${adapter} ktrim=r overwrite=true k=23 mink=11 hdist=1 tpe tbo
-
-            fastq_file="./trimmed/${base}.fastq.gz"
-
+            trim_galore --dont_gzip -o ./trimmed ${dir}/${base}.fastq.gz
+            fastq_file="./trimmed/${base}_trimmed.fq"
         else
 
-            fastq_file="${file}"
+            fastq_file="${dir}/${base}.fastq.gz"
         fi
 
         # Map reads using hisat2
 
         echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
-        hisat2 --max-intronlen 12000 --no-mixed -p $SLURM_NTASKS -x ${index} -U $fastq_file -S ./hisat2_out/${base}.sam
+        hisat2 --max-intronlen 12000 --no-mixed -p 4 -x ${index} -U $fastq_file -S ./hisat2_out/${base}.sam
     fi
 
     if [[ $skipfile = false ]]; then
 
-        echo "$(date +"%m-%d-%Y_%H:%M") Mapped ${base}"
+        echo $(date +"%m-%d-%Y_%H:%M")" Mapped ${base}"
 
         echo "$(date +"%m-%d-%Y_%H:%M") Sorting and indexing ${base}.bam"
 
@@ -218,7 +236,7 @@ for file in ${dir}/*.fastq.gz; do
     fi
 done
 
-echo "$(date +"%m-%d-%Y_%H:%M") Counting reads with featureCounts... "
+echo $(date +"%m-%d-%Y_%H:%M")" Counting reads with featureCounts... "
 
 # Count all files together so the counts will appear in one file
 
@@ -231,10 +249,4 @@ do
 
 done
 
-# Count genes
-
-featureCounts -a $gtf -o ./count/counts.txt -T 4 -t exon -Q 30 -g gene_name${ARRAY}
-
-# Count transposons/repeats
-
-featureCounts -a $rmsk_gtf -o ./count/repeat_counts.txt -T 4 -t exon -M --primary${ARRAY}
+featureCounts -a ${gtf} -o ./count/counts.txt -T 4 -t exon -g gene_name${ARRAY}

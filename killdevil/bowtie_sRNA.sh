@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-#SBATCH -N 1
-#SBATCH -n 8
-#SBATCH -t 1-0
-
-module add bowtie samtools python/2.7.12 subread
 
 ###############################################################################
 # bowtie_sRNA.sh: Analysis pipeline for small RNA reads (version 2.0)
@@ -14,6 +9,15 @@ module add bowtie samtools python/2.7.12 subread
 #       counting the number of reads mapping to each feature
 
 # NOTE: Quality filtering / adaptor trimming is NOT covered in the pipeline
+
+###############################################################################
+# BEFORE RUNNING SCRIPT DO THE FOLLOWING:
+###############################################################################
+
+# 1. Make sure modules are loaded:
+#       bowtie
+#       samtools
+#       python (default version)
 
 # The location of the following files may have to be modified in this script:
 # bowtie index files
@@ -30,8 +34,8 @@ usage="
     This script should be run with four processors
 
     USAGE
-       
-       bash bowtie_sRNA.sh [options]  
+       step1:   load the following modules: bowtie samtools python (default version).
+       step2:   bash bowtie_sRNA.sh [options]  
 
     ARGUMENTS
         -d/--dir
@@ -39,9 +43,6 @@ usage="
         
         -r/--reference
         Mapping reference: genome, transposons, mrna, mirna, pirna, telomere, rdna or e_coli (default = genome)
-
-        -n/--no_filter
-        Do not filter reads. Use this option for non-small RNA libraries. Files must be in .fastq.gz format.
 
         -f/--filter 
         Filter reads based on the first nucleotide (eg. to select 22g RNAs, use options -f g -s 22,22
@@ -58,21 +59,22 @@ usage="
         -m/--mismatch
         set maximum number of base mismatches allowed during mapping (default = 0)
 
+        -l/--multi
+        set maximum number of multiple alignments allowed for a particular read (note: any read exceding this number of alignments will be asigned to one of the alignments at random) (default = 1)
+
         -a/--antisense
         if --count option is selected, only reads that map antisense to reference sequence are kept
-
-        -l--all
     "
 # Set default parameters
 
 ref="genome"
 mismatch=0
+multi=1
 filter="A,T,C,G"
 size="18,30"
 count=false
 antisense=false
 trim_a=""
-no_filter=false
 
 # Parse command line parameters
 
@@ -97,6 +99,10 @@ do
             mismatch="$2"
             shift
             ;;
+            -l|--multi)
+            multi="$2"
+            shift
+            ;;
             -f|--filter)
             filter="$2"
             shift
@@ -104,9 +110,6 @@ do
             -s|--size)
             size="$2"
             shift
-            ;;
-            -n|--no_filter)
-            no_filter=true
             ;;
             -c|--count)
             count=true
@@ -158,13 +161,38 @@ case $ref in
     index="/proj/ahmedlab/steve/seq/e_coli_b/genome/bowtie/genome"
 esac
 
+
+# Print out loaded modules to keep a record of which software versions were used in this run
+
+modules=$(/nas02/apps/Modules/bin/modulecmd tcsh list 2>&1)
+echo "$modules"
+
+# Module test
+
+if [[ $count = true ]]; then
+    if [[ $ref == "genome" ]]; then
+        req_modules=("bowtie" "samtools" "subread")
+    else
+        req_modules=("bowtie" "samtools" "python")
+    fi
+else
+    req_modules=("bowtie" "samtools")
+fi
+
+for i in ${req_modules[@]}; do
+    if [[ $modules != *${i}* ]]; then
+        echo "ERROR: Please load ${i}"
+        exit 1
+    fi
+done
+
 # Print run parameters to file
 
 if [ -e "run_parameters.txt" ]; then
     rm "run_parameters.txt"
 fi
 
-printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: bowtie small RNA\n\nParameters:\n\tsample directory: ${dir}\n\tref: ${ref}\n\tmismatches: ${mismatch}\n\tfirst nucleotide: ${filter}\n\tsize range: ${size}\n\tcount reads: ${count}\n\tcount only antisense reads: ${antisense}\n\nM\n\nSamples:" > run_parameters.txt
+printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: bowtie small RNA\n\nParameters:\n\tsample directory: ${dir}\n\tref: ${ref}\n\tmismatches: ${mismatch}\n\tmultihits: ${multi}\n\first nucleotide: ${filter}\n\tsize range: ${size}\n\tcount reads: ${count}\n\tcount only antisense reads: ${antisense}\n\nModules: ${modules}\n\nSamples:" > run_parameters.txt
 
 ###############################################################################
 ###############################################################################
@@ -214,7 +242,6 @@ for file in ${dir}/*; do
 
     printf "\n\t"$base >> run_parameters.txt
 
-
     # Extract 22G and or 21U RNAs or convert all reads to raw format
     
     python /proj/ahmedlab/steve/seq/util/small_rna_filter.py -f $filter -s $size -o ./filtered/${base}.txt $trim_a $file
@@ -223,9 +250,8 @@ for file in ${dir}/*; do
     
     echo $(date +"%m-%d-%Y_%H:%M")" Mapping ${base} with Bowtie..."
 
-    bowtie --best --strata -m 1 -r -S -v $mismatch -p 8 --best $index ./filtered/${base}.txt ./bowtie_out/${base}.sam
-
-
+    bowtie -M $multi -r -S -v $mismatch -p 4 --best $index ./filtered/${base}.txt ./bowtie_out/${base}.sam
+     
     echo $(date +"%m-%d-%Y_%H:%M")" Mapped ${base}"
         
     # Convert to bam then sort
