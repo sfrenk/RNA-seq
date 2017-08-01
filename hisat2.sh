@@ -1,9 +1,10 @@
-#!/usr/bin/env bash
-#SBATCH -n 8
+#!/usr/bin/bash
+#SBATCH -n 4
 #SBATCH -N 1
 #SBATCH -t 5-0
 
-module add bbmap hisat2 subread samtools
+module add bbmap hisat2 subread samtools igvtools stringtie
+module list
 
 ###############################################################################
 # Basic pipeline for mapping and counting single/paired end reads using hisat2
@@ -22,6 +23,9 @@ gtf="/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
 
 #       gtf annotation file for repeats
 rmsk_gtf="/proj/ahmedlab/steve/seq/transposons/ce11_rebpase/ce11_rmsk_original.gtf"
+
+# Adapter file for trimming
+adapter_file="/nas/longleaf/apps/bbmap/37.25/bbmap/resources/adapters.fa"
 
 ###############################################################################
 ###############################################################################
@@ -42,13 +46,18 @@ usage="
         Use this option if fastq files contain paired-end reads. NOTE: if paired, each pair must consist of two files with the basename ending in '_1' or '_2' depending on respective orientation.
 
         -t/--trim
-        Trim reads with trim_galore before mapping. If using this option, also supply the adapter sequence.
+        Trim/filter reads with bbduk before mapping
+
+        -s/--stringtie
+        Run stringtie to detect de-novo transcripts
     "
 
 # Set default parameters
 paired=false
 multihits=1
 trim=false
+stringtie=false
+dta_flag=false
 
 # Parse command line parameters
 
@@ -71,8 +80,11 @@ do
         ;;
         -t|--trim)
         trim=true
-        adapter="$2"
-        shift
+        ;;
+        -s|--stringtie)
+        stringtie=true
+        # Need to set downstream transcriptome assembly flag in hisat2 if using stringtie
+        dta_flag="--dta"
         ;;
     esac
 shift
@@ -86,13 +98,12 @@ fi
 
 # Print run parameters to file
 
-if [ -e "run_parameters.txt" ]; then
-    rm "run_parameters.txt"
+if [[ ! -f run_parameters.txt ]]; then
+    printf "$(date +"%m-%d-%Y_%H:%M")\n\nPipeline: hisat2\n\nParameters:sample directory: ${dir}\n\tpaired end: ${paired}\n\ttrim: ${trim}\n\n" > run_parameters.txt
+
+    module list &>> run_parameters.txt
+    printf "\n" >> run_parameters.txt
 fi
-
-printf "$(date +"%m-%d-%Y_%H:%M")\n\nPipeline: hisat2\n\nParameters:sample directory: ${dir}\n\tpaired end: ${paired}\n\ttrim: ${trim} apadter=${adapter}\n" > run_parameters.txt
-
-module list &>> run_parameters.txt
 
 ###############################################################################
 ###############################################################################
@@ -115,13 +126,21 @@ if [ ! -d "count" ]; then
     mkdir count
 fi
 
-if [ -e "total_mapped_reads.txt" ]; then
-    rm "total_mapped_reads.txt"
+if [ ! -d "cov" ]; then
+    mkdir cov
+fi
+
+if [ ! -d "stringtie" ] && [[ $stringtie = true ]]; then
+    mkdir stringtie
 fi
 
 echo "$(date +"%m-%d-%Y_%H:%M") Starting pipeline"
 
-for file in ${dir}/*.fastq.gz; do
+shopt -s nullglob
+
+files=(${dir}/*.fastq.gz)
+
+for file in ${files[@]}; do
     
     skipfile=false
 
@@ -142,7 +161,7 @@ for file in ${dir}/*.fastq.gz; do
 
                 echo "$(date +"%m-%d-%Y_%H:%M") Trimming ${base} with bbduk..."
                 
-                bbduk.sh in1=${dir}/${base}_1.fastq.gz in2=${dir}/${base}_2.fastq.gz out1=./trimmed/${base}_1.fastq.gz out2=./trimmed/${base}_2.fastq.gz literal=${adapter} ktrim=r overwrite=true k=23 mink=11 hdist=1 tpe tbo
+                bbduk.sh in1=${dir}/${base}_1.fastq.gz in2=${dir}/${base}_2.fastq.gz out1=./trimmed/${base}_1.fastq.gz out2=./trimmed/${base}_2.fastq.gz ref=${adapter_file} ktrim=r overwrite=true k=23 mink=11 hdist=1 maq=20 tpe tbo
 
                 fastq_r1="./trimmed/${base}_1.fastq.gz"
                 fastq_r2="./trimmed/${base}_1.fastq.gz"
@@ -155,7 +174,7 @@ for file in ${dir}/*.fastq.gz; do
             # Map reads using hisat2
 
             echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
-            hisat2 --max-intronlen 12000 --no-mixed -p $SLURM_NTASKS -x ${index} -1 $fastq_r1 -2 $fastq_r2 -S ./hisat2_out/${base}.sam
+            hisat2 --max-intronlen 12000 $stringtie_flag --no-mixed -p $SLURM_NTASKS -x ${index} -1 $fastq_r1 -2 $fastq_r2 -S ./hisat2_out/${base}.sam
 
         else
 
@@ -177,7 +196,7 @@ for file in ${dir}/*.fastq.gz; do
 
             echo "$(date +"%m-%d-%Y_%H:%M") Trimming ${base} with bbduk..."
 
-            bbduk.sh in=${file} out=./trimmed/${base}.fastq.gz literal=${adapter} ktrim=r overwrite=true k=23 mink=11 hdist=1 tpe tbo
+            bbduk.sh in=${file} out=./trimmed/${base}.fastq.gz ref=${adapter_file} ktrim=r overwrite=true k=23 maq=20 mink=11 hdist=1
 
             fastq_file="./trimmed/${base}.fastq.gz"
 
@@ -189,7 +208,7 @@ for file in ${dir}/*.fastq.gz; do
         # Map reads using hisat2
 
         echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
-        hisat2 --max-intronlen 12000 --no-mixed -p $SLURM_NTASKS -x ${index} -U $fastq_file -S ./hisat2_out/${base}.sam
+        hisat2 --max-intronlen 12000 $stringtie_flag --no-mixed -p $SLURM_NTASKS -x ${index} -U $fastq_file -S ./hisat2_out/${base}.sam
     fi
 
     if [[ $skipfile = false ]]; then
@@ -215,26 +234,46 @@ for file in ${dir}/*.fastq.gz; do
 
         total_mapped="$(samtools view -c ./bam/${base}_sorted.bam)"
         printf ${base}"\t"${total_mapped}"\n" >> total_mapped_reads.txt
+
+        # Make coverage track for visualization
+        echo "$(date +"%m-%d-%Y_%H:%M") Making coverage track... "
+
+        igvtools count ./bam/${base}_sorted.bam ./cov/${base}.tdf ~/proj/seq/WS251/genome/genome.chrom.sizes
+
+        
+
+        if [[ stringtie = true ]]; then
+
+            # Look for denovo transcripts with stringtie
+
+            stringtie $file -p $SLURM_NTASKS -o ./stringtie/${base}.gtf -G $gtf
+        else
+
+            # Count reads (only reference transcripts)
+            echo "$(date +"%m-%d-%Y_%H:%M") Counting reads with featureCounts... "
+
+            featureCounts -a $gtf -o ./count/${base}_counts.txt -T $SLURM_NTASKS -t exon -Q 30 -g gene_name ./bam/${base}_sorted.bam
+        fi
     fi
 done
 
-echo "$(date +"%m-%d-%Y_%H:%M") Counting reads with featureCounts... "
+#echo "$(date +"%m-%d-%Y_%H:%M") Counting reads with featureCounts... "
 
 # Count all files together so the counts will appear in one file
 
-ARRAY=()
+#ARRAY=()
 
-for file in ./bam/*_sorted.bam
-do
+#for file in ./bam/*_sorted.bam
+#do
 
-    ARRAY+=" "${file}
+#    ARRAY+=" "${file}
 
-done
+#done
 
 # Count genes
 
-featureCounts -a $gtf -o ./count/counts.txt -T 4 -t exon -Q 30 -g gene_name${ARRAY}
+#featureCounts -a $gtf -o ./count/counts.txt -T 4 -t exon -Q 30 -g gene_name${ARRAY}
 
 # Count transposons/repeats
 
-featureCounts -a $rmsk_gtf -o ./count/repeat_counts.txt -T 4 -t exon -M --primary${ARRAY}
+#featureCounts -a $rmsk_gtf -o ./count/repeat_counts.txt -T 4 -t exon -M --primary${ARRAY}

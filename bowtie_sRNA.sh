@@ -4,6 +4,7 @@
 #SBATCH -t 1-0
 
 module add bowtie samtools python/2.7.12 subread
+module list
 
 ###############################################################################
 # bowtie_sRNA.sh: Analysis pipeline for small RNA reads (version 2.0)
@@ -44,7 +45,7 @@ usage="
         Do not filter reads. Use this option for non-small RNA libraries. Files must be in .fastq.gz format.
 
         -f/--filter 
-        Filter reads based on the first nucleotide (eg. to select 22g RNAs, use options -f g -s 22,22
+        Filter reads based on the first nucleotide (eg. to select 22g RNAs, use options -f g -s 22,22)
 
         -s/--size
         Specify size range of reads to keep by providing min and max length seperated by a comma (eg. to keep reads between 19 and 24 nucleotides (inclusive), use '-s 19,24' (Default size range: 18 to 30 nucleotides)
@@ -61,7 +62,8 @@ usage="
         -a/--antisense
         if --count option is selected, only reads that map antisense to reference sequence are kept
 
-        -l--all
+        -l/--all
+        If there are more than one best alignments for a read, report all alignments (by default the read is assigned to one location at random)
     "
 # Set default parameters
 
@@ -73,6 +75,7 @@ count=false
 antisense=false
 trim_a=""
 no_filter=false
+all=false
 
 # Parse command line parameters
 
@@ -117,6 +120,9 @@ do
             -t|--trim_a)
             trim_a="-a"
             ;;
+            -l|--all)
+            all=true
+            ;;
     esac
     shift
 done
@@ -160,11 +166,12 @@ esac
 
 # Print run parameters to file
 
-if [ -e "run_parameters.txt" ]; then
-    rm "run_parameters.txt"
-fi
+if [[ ! -f run_parameters.txt ]]; then
+    printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: bowtie small RNA\n\nParameters:\n\tsample directory: ${dir}\n\tref: ${ref}\n\tmismatches: ${mismatch}\n\tfirst nucleotide: ${filter}\n\tsize range: ${size}\n\tcount reads: ${count}\n\tcount only antisense reads: ${antisense}\n\treport all alignments: ${all}\n\nM\n\nSamples:" > run_parameters.txt
 
-printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: bowtie small RNA\n\nParameters:\n\tsample directory: ${dir}\n\tref: ${ref}\n\tmismatches: ${mismatch}\n\tfirst nucleotide: ${filter}\n\tsize range: ${size}\n\tcount reads: ${count}\n\tcount only antisense reads: ${antisense}\n\nM\n\nSamples:" > run_parameters.txt
+    module list &>> run_parameters.txt
+    printf "\n" >> run_parameters.txt
+fi
 
 ###############################################################################
 ###############################################################################
@@ -184,17 +191,16 @@ if [ ! -d "bam" ]; then
     mkdir bam
 fi
 
-# Remove "total_mapped_reads.txt" file if it exists already
-
-if [ -e "total_mapped_reads.txt" ]; then
-    rm "total_mapped_reads.txt"
-fi
 
 # Start pipeline
 
 echo $(date +"%m-%d-%Y_%H:%M")" Starting pipeline..."
 
-for file in ${dir}/*; do
+shopt -s nullglob
+
+files=(${dir}/*.fastq.gz)
+
+for file in ${files[@]}; do
         
     # Define basename of sample based on file extension
     
@@ -223,7 +229,13 @@ for file in ${dir}/*; do
     
     echo $(date +"%m-%d-%Y_%H:%M")" Mapping ${base} with Bowtie..."
 
-    bowtie --best --strata -m 1 -r -S -v $mismatch -p 8 --best $index ./filtered/${base}.txt ./bowtie_out/${base}.sam
+    if [[ $all = true ]]; then
+        
+        bowtie --best --strata -a -r -S -v $mismatch -p 8 $index ./filtered/${base}.txt ./bowtie_out/${base}.sam
+    else
+        
+        bowtie --best --strata -m 1 -r -S -v $mismatch -p 8 $index ./filtered/${base}.txt ./bowtie_out/${base}.sam
+    fi
 
 
     echo $(date +"%m-%d-%Y_%H:%M")" Mapped ${base}"
