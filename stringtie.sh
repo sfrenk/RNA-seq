@@ -14,6 +14,9 @@ module list
 #       gtf annotation file for genes
 gtf="/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
 
+#       default directory:
+dir="."
+
 usage="
     Assemble de-novo transcriptomes for samples with the stringtie pipeline. NOTE: This pipeline requires mapped bam files. If starting with raw data (eg. .fastq files) run hisat2.sh first.
 
@@ -23,15 +26,11 @@ usage="
             ./bam/
             ./stringtie/
 
+        (default: current directory)
+
     "
 
 # Parse command line parameters
-
-if [ -z "$1" ]; then
-    echo "$usage"
-    exit
-fi
-
 
 while [[ $# > 0 ]]
 do
@@ -41,31 +40,28 @@ do
         dir="$2"
         shift
         ;;
+        -h|--help)
+        echo "$usage"
+        ;;
     esac
 shift
 done
 
-# Remove trailing "/" from input directory if present
+###############################################################################
+###############################################################################
 
-if [[ ${dir:(-1)} == "/" ]]; then
-    dir=${dir::${#dir}-1}
+if [[ -f ./stringtie/stringtie_merged.gtf ]]; then
+    rm ./stringtie/stringtie_merged.gtf
 fi
 
+ls ${dir}/stringtie/*.gtf > gtf_files.txt
 
-###############################################################################
-###############################################################################
+stringtie --merge -p $SLURM_NTASKS -G $gtf -o ./stringtie/stringtie_merged.gtf gtf_files.txt
 
-shopt -s nullglob
-
-gtf_files=(./stringtie/*.gtf)
-
-stringtie --merge -p $SLURM_NTASKS -G $gtf -o ./stringtie/stringtie_merged.gtf ${gtf_files[@]}
-
-for file in ${dir}/*.bam; do
+for file in ${dir}/bam/*.bam; do
 	base=$(basename $file .bam)
 
-    stringtie $file -p $SLURM_NTASKS -G ./stringtie/stringtie_merged.gtf -e -b ./stringtie/${base}.ctab
-
+    stringtie $file -p $SLURM_NTASKS -G ./stringtie/stringtie_merged.gtf -e -B -o ./stringtie/${base}/transcripts.gtf
 
 done
 

@@ -1,0 +1,49 @@
+import glob
+
+configfile: "config.jason"
+
+FASTA = "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/genome.fa"
+
+rule all:
+    input:
+        expand("bam/{sample}.bam", sample=config['samples'])
+
+def get_fastqs(wildcards):
+    return glob.glob(config["basedir"] + "/" + wildcards.sample + ".fa.gz")
+
+rule filter_srna:
+	input:
+		get_fastqs
+	output:
+		"filtered/{sample}.fa"
+	params:
+		filter_base = config["filter_params"]["filter_base"],
+		size = config["filter_params"]["size"]
+	log:
+		"logs/{sample}_filter.log"
+	shell:
+		"small_rna_filter -f {params.filter_base} -s {params.size} -o {output} {input}"
+
+rule bowtie_index:
+	input: FASTA
+	output: "index/genome.1.ebwt"
+	params:
+		output_name = "index/genome"
+	shell:
+  		"bowtie-build {input} {params.output_name}"
+
+rule bowtie_mapping:
+	input:
+		reads_file = "filtered/{sample}.fa",
+		idx_file = "index/genome.1.ebwt"
+	output: "bam/{sample}.bam"
+	params:
+		idx = "index/genome"
+		multi_flag = config["map_params"]["multi_flag"]
+		mismatch = config["map_params"]["mismatch"]
+	log:
+		"logs/{sample}_map.log"
+	threads: 4
+	shell:
+		"bowtie -r --best --strata -M 1 -S -v {mismatch} -p {threads} {params.idx} {input.reads_file} | samtools view -bh -F 4 - | samtools sort -o {output} -"
+

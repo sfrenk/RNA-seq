@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 #SBATCH -n 4
 #SBATCH -N 1
-#SBATCH -t 5-0
+#SBATCH -t 1-0
 
 module add bbmap hisat2 subread samtools igvtools stringtie
 module list
@@ -99,7 +99,7 @@ fi
 # Print run parameters to file
 
 if [[ ! -f run_parameters.txt ]]; then
-    printf "$(date +"%m-%d-%Y_%H:%M")\n\nPipeline: hisat2\n\nParameters:sample directory: ${dir}\n\tpaired end: ${paired}\n\ttrim: ${trim}\n\n" > run_parameters.txt
+    printf "$(date +"%m-%d-%Y_%H:%M")\n\nPipeline: hisat2\n\nParameters:sample directory: ${dir}\n\tpaired end: ${paired}\n\ttrim: ${trim}\nstringtie: ${stringtie}\n\n" > run_parameters.txt
 
     module list &>> run_parameters.txt
     printf "\n" >> run_parameters.txt
@@ -153,7 +153,7 @@ for file in ${files[@]}; do
             Fbase=$(basename $file .fastq.gz)
             base=${Fbase%_1}
 
-            printf "\n\t"$base >> run_parameters.txt
+            printf "${base}\n" >> run_parameters.txt
 
             if [[ $trim = true ]]; then
 
@@ -174,7 +174,7 @@ for file in ${files[@]}; do
             # Map reads using hisat2
 
             echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
-            hisat2 --max-intronlen 12000 $stringtie_flag --no-mixed -p $SLURM_NTASKS -x ${index} -1 $fastq_r1 -2 $fastq_r2 -S ./hisat2_out/${base}.sam
+            hisat2 --max-intronlen 12000 $stringtie_flag --no-mixed --no-discordant -p $SLURM_NTASKS -x ${index} -1 $fastq_r1 -2 $fastq_r2 -S ./hisat2_out/${base}.sam
 
         else
 
@@ -188,7 +188,7 @@ for file in ${files[@]}; do
 
         base=$(basename $file .fastq.gz)
 
-        printf "\n\t"$base >> run_parameters.txt
+        printf "${base}\n" >> run_parameters.txt
 
         if [[ $trim = true ]]; then
 
@@ -208,7 +208,7 @@ for file in ${files[@]}; do
         # Map reads using hisat2
 
         echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
-        hisat2 --max-intronlen 12000 $stringtie_flag --no-mixed -p $SLURM_NTASKS -x ${index} -U $fastq_file -S ./hisat2_out/${base}.sam
+        hisat2 --max-intronlen 12000 $stringtie_flag -p $SLURM_NTASKS -x ${index} -U $fastq_file -S ./hisat2_out/${base}.sam
     fi
 
     if [[ $skipfile = false ]]; then
@@ -219,7 +219,13 @@ for file in ${files[@]}; do
 
         # Get rid of unmapped reads
 
-        samtools view -h -F 4 ./hisat2_out/${base}.sam > ./bam/${base}.bam
+        samtools view -bh -F 4 ./hisat2_out/${base}.sam > ./bam/${base}.mapped.bam
+
+        # Get rid of secondary alignments
+
+        samtools view -bh -F 256 ./bam/${base}.mapped.bam > ./bam/${base}.bam
+
+        rm ./bam/${base}.mapped.bam
 
         # Sort and index
 
@@ -242,11 +248,11 @@ for file in ${files[@]}; do
 
         
 
-        if [[ stringtie = true ]]; then
+        if [[ $stringtie = true ]]; then
 
             # Look for denovo transcripts with stringtie
 
-            stringtie $file -p $SLURM_NTASKS -o ./stringtie/${base}.gtf -G $gtf
+            stringtie ./bam/${base}_sorted.bam -p $SLURM_NTASKS -o ./stringtie/${base}.gtf -G $gtf
         else
 
             # Count reads (only reference transcripts)

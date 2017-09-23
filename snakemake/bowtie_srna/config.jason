@@ -1,0 +1,17 @@
+{
+    "basedir": "/nas/longleaf/home/sfrenk/proj/seq/external/srna_test",
+    "samples": {
+        "test1": ["test1"],
+        "test2": ["test2"]
+    },
+    "filter_params": {
+        "size": ["22,22"],
+        "filter_base": ["G"],
+        "trim": ["False"],
+        "trim_min_length": ["22"]
+    },
+    "map_params": {
+        "multi_flag": ["-M 1"]
+        "mismatch": ["0"]
+    }
+}

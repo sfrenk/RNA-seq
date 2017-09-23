@@ -39,10 +39,10 @@ usage="
         directory containing read files in fasta.gz, txt.gz or fastq.gz format
         
         -r/--reference
-        Mapping reference: genome, transposons, mrna, mirna, pirna, telomere, rdna or e_coli (default = genome)
+        Mapping reference: genome, transposons, mrna, mirna, pirna, telomere, rdna, csr1_targets or e_coli (default = genome)
 
-        -n/--no_filter
-        Do not filter reads. Use this option for non-small RNA libraries. Files must be in .fastq.gz format.
+        -q/--fastq_mode
+        Output reads in fastq format after filtering. By default, reads are converted to raw format, which removes quality information 
 
         -f/--filter 
         Filter reads based on the first nucleotide (eg. to select 22g RNAs, use options -f g -s 22,22)
@@ -50,20 +50,34 @@ usage="
         -s/--size
         Specify size range of reads to keep by providing min and max length seperated by a comma (eg. to keep reads between 19 and 24 nucleotides (inclusive), use '-s 19,24' (Default size range: 18 to 30 nucleotides)
 
-        -t/--trim_a
-        Trim 3' A nucleotides from reads before filtering/mapping
+        -t/--trim
+        Trim 3' nucleotides of this base from 3' ends of reads before filtering/mapping (eg. use -t A to trim any 3' A nucleotides)
 
         -c/--count
-        count reads and compile read counts from each sample into a count table
+        Count reads and compile read counts from each sample into a count table
 
         -m/--mismatch
         set maximum number of base mismatches allowed during mapping (default = 0)
 
         -a/--antisense
-        if --count option is selected, only reads that map antisense to reference sequence are kept
+        If --count option is selected, only reads that map antisense to reference sequence are kept
 
-        -l/--all
-        If there are more than one best alignments for a read, report all alignments (by default the read is assigned to one location at random)
+        -l/--multi
+        How to deal with reads with more than one best alignment:
+
+            random (default: randomly assign the read to one of the locations
+            discard: discard the read
+            all: report all alignments
+
+        --min_trim_length
+        Stop trimming 3' nucleotides when read has this many nucleotides
+
+        --csr1
+        Use the following procedure to detect polyudyrilated csr-1 sRNAs:
+            1. Map reads
+            2. Take all unmapped reads ending with T and remove the final T
+            3. Map the T-trimmed reads
+            4. Keep repeating 1-3 until there are no T-trimmed unmapped reads of >= min size left 
     "
 # Set default parameters
 
@@ -73,9 +87,12 @@ filter="A,T,C,G"
 size="18,30"
 count=false
 antisense=false
-trim_a=""
-no_filter=false
-all=false
+trim=""
+fastq_mode=false
+raw_flag="-r"
+multi_option="random"
+csr=false
+min_trim_length=""
 
 # Parse command line parameters
 
@@ -88,50 +105,54 @@ while [[ $# > 0 ]]
 do
     key="$1"
     case $key in
-            -d|--dir)
-            dir="$2"
-            shift
-            ;;
-            -r|--ref)
-            ref="$2"
-            shift
-            ;;
-            -m|--mismatch)
-            mismatch="$2"
-            shift
-            ;;
-            -f|--filter)
-            filter="$2"
-            shift
-            ;;
-            -s|--size)
-            size="$2"
-            shift
-            ;;
-            -n|--no_filter)
-            no_filter=true
-            ;;
-            -c|--count)
-            count=true
-            ;;
-            -a|--antisense)
-            antisense=true
-            ;;
-            -t|--trim_a)
-            trim_a="-a"
-            ;;
-            -l|--all)
-            all=true
-            ;;
+        -d|--dir)
+        dir="$2"
+        shift
+        ;;
+        -r|--ref)
+        ref="$2"
+        shift
+        ;;
+        -m|--mismatch)
+        mismatch="$2"
+        shift
+        ;;
+        -f|--filter)
+        filter="$2"
+        shift
+        ;;
+        -s|--size)
+        size="$2"
+        shift
+        ;;
+        -q|--fastq)
+        fastq_mode=true
+        ;;
+        -c|--count)
+        count=true
+        ;;
+        -a|--antisense)
+        antisense=true
+        ;;
+        -t|--trim)
+        trim="-t $2"
+        ;;
+        -l|--multi)
+        multi_option="$2"
+        shift
+        ;;
+        --min_trim_length)
+        min_trim_length="-m $2"
+        shift
+        ;;
+        --csr1)
+        csr=true
+        # Need to use fastq mode for csr1 mode so that unmapped reads file doesn't look weird
+        fastq_mode=true
+        ;;
     esac
     shift
 done
-
-# Remove trailing "/" from dir directory if present
-
-if [[ ${dir:(-1)} == "/" ]]; then
-    dir=${dir::${#dir}-1}
-fi
 
 # Select bowtie index based on reference
 
@@ -160,14 +181,39 @@ case $ref in
     "pirna")
     index="/nas02/home/s/f/sfrenk/seq/pirna/bowtie/pirna"
     ;;
+    "csr1")
+    index="/nas/longleaf/home/sfrenk/proj/seq/WS251/srna/csr1_targets/bowtie/csr1_targets"
+    ;;
     "e_coli")
     index="/proj/ahmedlab/steve/seq/e_coli_b/genome/bowtie/genome"
+    ;;
+esac
+
+# parse multi_option
+
+valid_multi_options=("discard" "random" "all")
+
+if ! [[ "${valid_multi_options[@]}" =~ "$multi_option" ]]; then
+    echo "ERROR: Please supply valid -l/--multi_option argument"
+    exit
+fi
+
+case $multi_option in
+    "discard")
+    multi_flag="-m 1"
+    ;;
+    "random")
+    multi_flag="-M 1"
+    ;;
+    "all")
+    multi_flag="-a"
+    ;;
 esac
 
 # Print run parameters to file
 
 if [[ ! -f run_parameters.txt ]]; then
-    printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: bowtie small RNA\n\nParameters:\n\tsample directory: ${dir}\n\tref: ${ref}\n\tmismatches: ${mismatch}\n\tfirst nucleotide: ${filter}\n\tsize range: ${size}\n\tcount reads: ${count}\n\tcount only antisense reads: ${antisense}\n\treport all alignments: ${all}\n\nM\n\nSamples:" > run_parameters.txt
+    printf $(date +"%m-%d-%Y_%H:%M")"\n\nPipeline: bowtie small RNA\n\nParameters:\n\tsample directory: ${dir}\n\tref: ${ref}\n\tmismatches: ${mismatch}\n\tfirst nucleotide: ${filter}\n\tsize range: ${size}\n\tcount reads: ${count}\n\tcount only antisense reads: ${antisense}\n\tmulti_option: ${multi_option}\n\tcsr1 mode (T trim): ${csr}\n\n" > run_parameters.txt
 
     module list &>> run_parameters.txt
     printf "\n" >> run_parameters.txt
@@ -184,13 +230,15 @@ fi
 if [ ! -d "bowtie_out" ]; then
     mkdir bowtie_out
 fi
-if [ ! -d "count" ] && [[ ${count} = true ]]; then
+if [ ! -d "count" ] && [[ $count = true ]]; then
     mkdir count
 fi
 if [ ! -d "bam" ]; then
     mkdir bam
 fi
-
+if [ ! -d "fastq" ] && [[ $csr = true ]]; then
+    mkdir fastq
+fi
 
 # Start pipeline
 
@@ -198,7 +246,7 @@ echo $(date +"%m-%d-%Y_%H:%M")" Starting pipeline..."
 
 shopt -s nullglob
 
-files=(${dir}/*.fastq.gz)
+files=(${dir}/*.gz)
 
 for file in ${files[@]}; do
         
@@ -218,25 +266,71 @@ for file in ${files[@]}; do
 
     echo $(date +"%m-%d-%Y_%H:%M")" ################ processing ${base} ################"
 
-    printf "\n\t"$base >> run_parameters.txt
+    printf "${base}\n" >> run_parameters.txt
 
 
-    # Extract 22G and or 21U RNAs or convert all reads to raw format
+    if [[ $fastq_mode = false ]]; then
     
-    python /proj/ahmedlab/steve/seq/util/small_rna_filter.py -f $filter -s $size -o ./filtered/${base}.txt $trim_a $file
+        # Extract 22G and or 21U RNAs or convert all reads to raw format
+
+        small_rna_filter -f $filter -s $size -o ./filtered/${base}.txt $trim $min_trim_length $file
+
+        reads_file=./filtered/${base}.txt
+    
+    else
+
+        # Need to switch off the -r argument in bowtie
+
+        raw_flag="-q"
+        small_rna_filter -f $filter -s $size -o ./filtered/${base}.fastq $trim $min_trim_length $file
+
+        reads_file=./filtered/${base}.fastq
+    fi
 
     # Map reads using Bowtie
     
-    echo $(date +"%m-%d-%Y_%H:%M")" Mapping ${base} with Bowtie..."
+    if [[ $csr = true ]]; then
+        t_trim=1
+        counter=0
 
-    if [[ $all = true ]]; then
+        while [[ $t_trim -gt 0 && $count -le 10 ]]; do
+
+            echo $(date +"%m-%d-%Y_%H:%M")" Mapping ${base} in CSR-1 mode..."
+
+            bowtie --best --strata $raw_flag $multi_flag -S -v $mismatch -p $SLURM_NTASKS --un ./fastq/${base}_unmapped.fastq $index $reads_file ./bowtie_out/${base}_${counter}.sam
+            
+            if [[ -f ./fastq/${base}_unmapped.fastq ]]; then
+                counter=$((counter+1))
+
+                small_rna_filter -f $filter -s $size -u T -o ./fastq/${base}_t_${counter}.fastq ./fastq/${base}_unmapped.fastq
+
+                reads_file=./fastq/${base}_t_${counter}.fastq
+                t_trim=$(wc -l < $reads_file)
+            
+            else
+                
+                t_trim=0
+            fi
+
+            rm ./fastq/${base}_unmapped.fastq
         
-        bowtie --best --strata -a -r -S -v $mismatch -p 8 $index ./filtered/${base}.txt ./bowtie_out/${base}.sam
+        done
+
+        # Merge sam files
+        
+        header=./bowtie_out/${base}_0.sam
+        files=(./bowtie_out/${base}_*.sam)
+
+        (grep ^@ $header; for f in $files; do grep -v ^@ $f; done) > ./bowtie_out/${base}.sam
+
+        rm ./bowtie_out/${base}_*.sam
+
     else
-        
-        bowtie --best --strata -m 1 -r -S -v $mismatch -p 8 $index ./filtered/${base}.txt ./bowtie_out/${base}.sam
-    fi
 
+        echo $(date +"%m-%d-%Y_%H:%M")" Mapping ${base} with Bowtie..."
+        
+        bowtie --best --strata $raw_flag $multi_flag -S -v $mismatch -p $SLURM_NTASKS $index $reads_file ./bowtie_out/${base}.sam
+    fi
 
     echo $(date +"%m-%d-%Y_%H:%M")" Mapped ${base}"
         
