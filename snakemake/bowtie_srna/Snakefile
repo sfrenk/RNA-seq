@@ -1,20 +1,31 @@
 import glob
+import re
+import sys
 
 configfile: "config.json"
+GTF = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
 
 ANTISENSE =  config["count_params"]["antisense"]
 REF = config["ref"]
+BASEDIR = config["basedir"]
+EXTENSION = config["extension"]
+
+SAMPLES = glob.glob(BASEDIR + "/*" + EXTENSION)
+SAMPLES = [ re.search(BASEDIR + "/?([^/]+)" + EXTENSION, x).group(1) for x in SAMPLES ]
+
+if len(SAMPLES) == 0:
+	sys.exit("ERROR: no samples in base directory!")
 
 rule all:
     input:
         "count/counts.txt"
 
-def get_fastqs(wildcards):
-    return glob.glob(config["basedir"] + "/" + wildcards.sample + ".fa.gz")
+#def get_fastqs(wildcards):
+#    return glob.glob(config["basedir"] + "/" + wildcards.sample + ".fa.gz")
 
 rule filter_srna:
 	input:
-		get_fastqs
+		BASEDIR + "/{sample}" + EXTENSION
 	output:
 		"filtered/{sample}.fa"
 	params:
@@ -86,7 +97,7 @@ if REF != "genome":
 
 	rule merge_counts:
 		input:
-			expand("count/{sample}.txt", sample=config["samples"])
+			expand("count/{sample}.txt", sample = SAMPLES)
 		output:
 			"count/counts.txt"
 		threads: 4
@@ -97,11 +108,11 @@ else:
 	# Count all samples at the same time with subread
 	rule count_reads_genome:
 		input:
-			expand("bam/{sample}.bam", sample=config["samples"]),
+			expand("bam/{sample}.bam", sample = SAMPLES),
 		output:
 			"count/counts.txt"
 		params:
-			gtf = config["gtf"]
+			gtf = GTF
 		log:
 			"logs/count.log"
 		threads: 4
