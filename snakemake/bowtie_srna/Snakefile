@@ -108,7 +108,7 @@ else:
 	# Count all samples at the same time with subread
 	rule count_reads_genome:
 		input:
-			expand("bam/{sample}.bam", sample = SAMPLES),
+			expand("bam/{sample}.bam", sample = SAMPLES)
 		output:
 			"count/counts.txt"
 		params:

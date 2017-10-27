@@ -174,7 +174,7 @@ for file in ${files[@]}; do
             # Map reads using hisat2
 
             echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
-            hisat2 --max-intronlen 12000 $stringtie_flag --no-mixed --no-discordant -p $SLURM_NTASKS -x ${index} -1 $fastq_r1 -2 $fastq_r2 -S ./hisat2_out/${base}.sam
+            hisat2 --max-intronlen 12000 $dta_flag --no-mixed --no-discordant -p $SLURM_NTASKS -x ${index} -1 $fastq_r1 -2 $fastq_r2 -S ./hisat2_out/${base}.sam
 
         else
 
@@ -208,7 +208,7 @@ for file in ${files[@]}; do
         # Map reads using hisat2
 
         echo "$(date +"%m-%d-%Y_%H:%M") Mapping ${base} with hisat2... "        
-        hisat2 --max-intronlen 12000 $stringtie_flag -p $SLURM_NTASKS -x ${index} -U $fastq_file -S ./hisat2_out/${base}.sam
+        hisat2 --max-intronlen 12000 $dta_flag -p $SLURM_NTASKS -x ${index} -U $fastq_file -S ./hisat2_out/${base}.sam
     fi
 
     if [[ $skipfile = false ]]; then
