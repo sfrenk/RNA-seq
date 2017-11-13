@@ -7,8 +7,8 @@ BASEDIR = "fastq"
 
 GTF = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
 INDEX = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genome/hisat2/genome"
-ADAPTERS="/nas/longleaf/apps/bbmap/37.36/bbmap/resources/adapters.fa"
-EXTENSION = ".fastq.gz"
+ADAPTERS="/nas/longleaf/apps/bbmap/37.62/bbmap/resources/adapters.fa"
+EXTENSION = ""
 
 SAMPLES = glob.glob(BASEDIR + "/*" + EXTENSION)
 SAMPLES = [ re.search(BASEDIR + "/?([^/]+)" + EXTENSION, x).group(1) for x in SAMPLES ]
@@ -16,10 +16,16 @@ SAMPLES = [ re.search(BASEDIR + "/?([^/]+)" + EXTENSION, x).group(1) for x in SA
 if len(SAMPLES) == 0:
 	sys.exit("ERROR: no samples in base directory!")
 
-# Only making the merged GTF
-rule all:
-    input:
-        expand("stringtie_count/{sample}/e2t.ctab", sample = SAMPLES)
+if COUNT_METHOD == "subread":
+	rule all:
+		input:
+			"count/counts.txt"
+elif COUNT_METHOD == "stringtie":
+	rule all:
+		input:
+			expand("stringtie_count/{sample}/e2t.ctab", sample = SAMPLES)
+else:
+	sys.exit("ERROR: Invalid COUNT_METHOD option. Choose subread or stringtie.")
 
 rule trim:
 	input:
@@ -59,34 +65,11 @@ rule index_bam:
 	shell:
 		"samtools index {input}"
 
-rule stringtie_make:
-	input:
-		"bam/{sample}.bam"
-	output:
-		"stringtie/{sample}.gtf"
-	params:
-		gtf = GTF
-	threads: 8
-	shell:
-		"stringtie {input} -p {threads} -o {output} -G {params.gtf}"
-
-rule stringtie_merge:
-	input:
-		expand("stringtie/{sample}.gtf", sample = SAMPLES)
-	output:
-		"stringtie/stringtie_merged.gtf"
-	params:
-		gtf = GTF
-	threads: 8
-	run:
-		shell("ls stringtie/*.gtf > gtf_files.txt")
-		shell("stringtie --merge -p {threads} -G {params.gtf} -o {output} gtf_files.txt")
-
 if COUNT_METHOD == "subread":
 	rule count:
 		input:
 			bamfiles = expand("bam/{sample}.bam", sample = SAMPLES),
-			gtf = "stringtie/stringtie_merged.gtf"
+			gtf = GTF #gtf = "stringtie/stringtie_merged.gtf"
 		output:
 			"count/counts.txt"
 		log:
@@ -96,6 +79,29 @@ if COUNT_METHOD == "subread":
 			"featureCounts -a {input.gtf} -M --fraction -o {output} -T {threads} -t exon -g gene_name {input.bamfiles} > {log} 2>&1"
 
 else:
+	rule stringtie_make:
+		input:
+			"bam/{sample}.bam"
+		output:
+			"stringtie/{sample}.gtf"
+		params:
+			gtf = GTF
+		threads: 8
+		shell:
+			"stringtie {input} -p {threads} -o {output} -G {params.gtf}"
+
+	rule stringtie_merge:
+		input:
+			expand("stringtie/{sample}.gtf", sample = SAMPLES)
+		output:
+			"stringtie/stringtie_merged.gtf"
+		params:
+			gtf = GTF
+		threads: 8
+		run:
+			shell("ls stringtie/*.gtf > gtf_files.txt")
+			shell("stringtie --merge -p {threads} -G {params.gtf} -o {output} gtf_files.txt")
+
 	rule count:
 		input:
 			bamfile = "bam/{sample}.bam",

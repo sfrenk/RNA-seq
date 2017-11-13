@@ -2,13 +2,29 @@ import glob
 import re
 import sys
 
-configfile: "config.json"
+############################    PARAMETERS    ##############################
+
+# Input parameters
+BASEDIR = ""
+EXTENSION = ".fa.gz"
+
+# Filtering parameters
+FILTER_BASE = ["A", "T", "C", "G"]
+SIZE = [22,22]
+TRIM = False
+MIN_TRIM_LENGTH = 0
+
+# Mapping parameters
+MULTI_FLAG = "-m 1"
+MISMATCH = "-v 0"
+REF = "genome"
+REF_FASTA = "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/genome.fa"
+
+# Counting parameters
+ANTISENSE =  False
 GTF = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
 
-ANTISENSE =  config["count_params"]["antisense"]
-REF = config["ref"]
-BASEDIR = config["basedir"]
-EXTENSION = config["extension"]
+###############################################################################
 
 SAMPLES = glob.glob(BASEDIR + "/*" + EXTENSION)
 SAMPLES = [ re.search(BASEDIR + "/?([^/]+)" + EXTENSION, x).group(1) for x in SAMPLES ]
@@ -20,19 +36,16 @@ rule all:
     input:
         "count/counts.txt"
 
-#def get_fastqs(wildcards):
-#    return glob.glob(config["basedir"] + "/" + wildcards.sample + ".fa.gz")
-
 rule filter_srna:
 	input:
 		BASEDIR + "/{sample}" + EXTENSION
 	output:
 		"filtered/{sample}.fa"
 	params:
-		filter_base = config["filter_params"]["filter_base"],
-		size = config["filter_params"]["size"],
-		trim = config["filter_params"]["trim"],
-		min_trim_length = config["filter_params"]["min_trim_length"]
+		filter_base = FILTER_BASE,
+		size = SIZE,
+		trim = TRIM,
+		min_trim_length = MIN_TRIM_LENGTH
 	log:
 		"logs/{sample}_filter.log"
 	shell:
@@ -45,7 +58,7 @@ rule filter_srna:
 		{input} > {log} 2>&1"
 
 rule bowtie_index:
-	input: config["ref_fasta"]
+	input: REF_FASTA
 	output: "index/genome.1.ebwt"
 	params:
 		output_name = "index/genome"
@@ -59,8 +72,8 @@ rule bowtie_mapping:
 	output: "bowtie_out/{sample}.sam"
 	params:
 		idx = "index/genome",
-		multi_flag = config["map_params"]["multi_flag"],
-		mismatch = config["map_params"]["mismatch"]
+		multi_flag = MULTI_FLAG,
+		mismatch = MISMATCH
 	log:
 		"logs/{sample}_map.log"
 	threads: 4

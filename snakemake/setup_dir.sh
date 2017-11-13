@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 
-usage=
-"Create directory with Snakemake files required for pipeline
+# Hard variables
+snakedir='/nas/longleaf/home/sfrenk/pipelines/snakemake'
 
-setup_dir -p <pipeline> -d <directory>
-
-pipelines: srna_telo (default), bowtie_srna"
+usage="Create directory with Snakemake files required for pipeline \n\n setup_dir -p <pipeline> -d <directory> \n\n pipelines: srna_telo (default), bowtie_srna"
 
 pipeline="srna_telo"
 
@@ -26,6 +24,10 @@ do
         dir="$2"
         shift
         ;;
+        -h|--help)
+		echo "$usage"
+		exit
+		;;
     esac
     shift
 done
@@ -40,33 +42,33 @@ fi
 
 case $pipeline in
 	"srna_telo")
-	script_dir="/nas/longleaf/home/sfrenk/scripts/charlie_paper/snakemake"
+	snakefile=""
 	;;
 	"bowtie_srna")
-	script_dir="/nas/longleaf/home/sfrenk/pipelines/snakemake/bowtie_srna"
+	snakefile="bowtie_srna.Snakefile"
 	;;
 	"hisat2_stringtie")
-	script_dir='/nas/longleaf/home/sfrenk/pipelines/snakemake/hisat2_stringtie'
+	snakefile='hisat2_stringtie.Snakefile'
 	;;
 esac
 
 # Copy over the necessary files
-cp "${script_dir}/Snakefile" .
-cp "${script_dir}/cluster.json" .
-cp "${script_dir}/config.json" .
+cp ${snakedir}/${snakefile} ./${snakefile}
+cp ${snakedir}/cluster.json .
 
-# Edit base directory in Config file
+# Edit base directory in Snakefile
 base="$(basename ${dir})"
-sed -i -r -e "s,\"basedir\": \".*\",\"basedir\": \"${srna_dir}\"," "./${base}/config.json"
+sed -r -i -e "s,^BASEDIR.*,BASEDIR = \"${dir}\"," "$snakefile"
 
 # Determine file extension
-extension="$(ls $srna_dir | grep -Eo "\.[^/]+" | sort | uniq)"
+extension="$(ls $dir | grep -Eo "\.[^/]+" | sort | uniq)"
 
 if [[ "${#extension[@]}" != 1 ]]; then
 	echo "ERROR: All files must have the same extension"
 
 else
 
-	# Edit extension in config file
-	sed -i -r -e "s,\"extension\": \".*\",\"extension\": \"${extension}\"," "./${base}/config.json"
+	# Edit extension in Snakefile
+	extension="\"${extension}\""
+	sed -i -r -e "s/^EXTENSION.*/EXTENSION = ${extension}/g" "$snakefile"
 fi
