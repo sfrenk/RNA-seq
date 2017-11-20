@@ -9,13 +9,14 @@ BASEDIR = ""
 EXTENSION = ".fa.gz"
 
 # Filtering parameters
-FILTER_BASE = ["A", "T", "C", "G"]
-SIZE = [22,22]
+FILTER_BASE = "A,T,C,G"
+SIZE = "18,30"
 TRIM = False
 MIN_TRIM_LENGTH = 0
 
 # Mapping parameters
-MULTI_FLAG = "-m 1"
+BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome"
+MULTI_FLAG = "-M 1"
 MISMATCH = "-v 0"
 REF = "genome"
 REF_FASTA = "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/genome.fa"
@@ -57,21 +58,12 @@ rule filter_srna:
 		-o {output} \
 		{input} > {log} 2>&1"
 
-rule bowtie_index:
-	input: REF_FASTA
-	output: "index/genome.1.ebwt"
-	params:
-		output_name = "index/genome"
-	shell:
-  		"bowtie-build {input} {params.output_name}"
-
 rule bowtie_mapping:
 	input:
-		reads_file = "filtered/{sample}.fa",
-		idx_file = "index/genome.1.ebwt"
+		"filtered/{sample}.fa"
 	output: "bowtie_out/{sample}.sam"
 	params:
-		idx = "index/genome",
+		idx = BOWTIE_INDEX,
 		multi_flag = MULTI_FLAG,
 		mismatch = MISMATCH
 	log:
@@ -82,7 +74,7 @@ rule bowtie_mapping:
 		{params.multi_flag} \
 		-v {params.mismatch} \
 		{params.idx} \
-		{input.reads_file} {output} > {log} 2>&1" 
+		{input} {output} > {log} 2>&1" 
 
 rule convert_to_bam:
 	input: "bowtie_out/{sample}.sam"
