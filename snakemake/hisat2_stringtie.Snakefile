@@ -2,16 +2,32 @@ import glob
 import re
 import sys
 
-COUNT_METHOD="subread"
-BASEDIR = "fastq"
+############################    PARAMETERS    ##############################
 
-GTF = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
-INDEX = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genome/hisat2/genome"
-ADAPTERS="/nas/longleaf/apps/bbmap/37.62/bbmap/resources/adapters.fa"
+# Input parameters
+BASEDIR = ""
 EXTENSION = ""
+PAIRED = True
 
-SAMPLES = glob.glob(BASEDIR + "/*" + EXTENSION)
-SAMPLES = [ re.search(BASEDIR + "/?([^/]+)" + EXTENSION, x).group(1) for x in SAMPLES ]
+# Trimming parameters
+ADAPTERS="/nas/longleaf/apps/bbmap/37.62/bbmap/resources/adapters.fa"
+
+# Mapping parameters
+INDEX = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genome/hisat2/genome"
+
+# Counting parameters
+COUNT_METHOD="subread"
+GTF = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
+
+###############################################################################
+
+SAMPLE_FILES = glob.glob(BASEDIR + "/*" + EXTENSION)
+SAMPLES = [ re.search(BASEDIR + "/?([^/]+)" + EXTENSION, x).group(1) for x in SAMPLE_FILES ]
+
+# Paired end files must end in _1/_2 where 1 and 2 denote forward and reverse reads respectively. 
+if PAIRED:
+	SAMPLES = list(set([re.search("(^.+)_[12]$", x).group(1) for x in SAMPLES]))
+	#SAMPLES = list(set([re.search("(^.+)_[rR]?[12]$", x).group(1) for x in SAMPLES]))
 
 if len(SAMPLES) == 0:
 	sys.exit("ERROR: no samples in base directory!")
@@ -27,30 +43,62 @@ elif COUNT_METHOD == "stringtie":
 else:
 	sys.exit("ERROR: Invalid COUNT_METHOD option. Choose subread or stringtie.")
 
-rule trim:
-	input:
-		BASEDIR + "/{sample}" + EXTENSION
-	output:
-		"trimmed/{sample}.fastq.gz"
-	params:
-		adapter_file = ADAPTERS
-	threads: 1
-	log:
-		"logs/{sample}_trim.log"
-	shell:
-		"bbduk.sh -Xmx4g in={input} out={output} ref={params.adapter_file} ktrim=r overwrite=true k=23 maq=20 mink=11 hdist=1 > {log} 2>&1"
+if PAIRED:
 
-rule hisat2_mapping:
-	input:
-		"trimmed/{sample}.fastq.gz"
-	output:
-		"hisat2_out/{sample}.sam"
-	params:
-		idx_base = INDEX,
-	log:
-		"logs/{sample}_map.log"
-	threads: 8
-	shell: "hisat2 --max-intronlen 12000 --dta --no-mixed --no-discordant -p {threads} -x {params.idx_base} -U {input} -S {output} > {log} 2>&1"
+	rule trim:
+		input:
+			read1 = BASEDIR + "/{sample}_1" + EXTENSION,
+			read2 = BASEDIR + "/{sample}_2" + EXTENSION
+		output:
+			out1 = "trimmed/{sample}_1.fastq.gz",
+			out2 = "trimmed/{sample}_2.fastq.gz"
+		params:
+			adapter_file = ADAPTERS
+		threads: 1
+		log:
+			"logs/{sample}_trim.log"
+		shell:
+			"bbduk.sh -Xmx4g in1={input.read1} in2={input.read2} out1={output.out1} out2={output.out2} ref={params.adapter_file} ktrim=r overwrite=true k=23 maq=20 mink=11 hdist=1 > {log} 2>&1"
+
+	rule hisat2_mapping:
+		input:
+			trimmed1 = "trimmed/{sample}_1.fastq.gz",
+			trimmed2 = "trimmed/{sample}_2.fastq.gz"
+		output:
+			"hisat2_out/{sample}.sam"
+		params:
+			idx_base = INDEX,
+		log:
+			"logs/{sample}_map.log"
+		threads: 8
+		shell: "hisat2 --max-intronlen 12000 --dta --no-mixed --no-discordant -p {threads} -x {params.idx_base} -1 {input.trimmed1} -2 {input.trimmed2} -S {output} > {log} 2>&1"
+
+
+else:
+	rule trim:
+		input:
+			BASEDIR + "/{sample}" + EXTENSION
+		output:
+			"trimmed/{sample}.fastq.gz"
+		params:
+			adapter_file = ADAPTERS
+		threads: 1
+		log:
+			"logs/{sample}_trim.log"
+		shell:
+			"bbduk.sh -Xmx4g in={input} out={output} ref={params.adapter_file} ktrim=r overwrite=true k=23 maq=20 mink=11 hdist=1 > {log} 2>&1"
+
+	rule hisat2_mapping:
+		input:
+			"trimmed/{sample}.fastq.gz"
+		output:
+			"hisat2_out/{sample}.sam"
+		params:
+			idx_base = INDEX,
+		log:
+			"logs/{sample}_map.log"
+		threads: 8
+		shell: "hisat2 --max-intronlen 12000 --dta --no-mixed --no-discordant -p {threads} -x {params.idx_base} -U {input} -S {output} > {log} 2>&1"
 
 rule convert_to_bam:
 	input:

@@ -15,11 +15,9 @@ TRIM = False
 MIN_TRIM_LENGTH = 0
 
 # Mapping parameters
-BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome"
 MULTI_FLAG = "-M 1"
-MISMATCH = "-v 0"
+MISMATCH_FLAG = "-v 0"
 REF = "genome"
-REF_FASTA = "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/genome.fa"
 
 # Counting parameters
 ANTISENSE =  False
@@ -27,9 +25,17 @@ GTF = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
 
 ###############################################################################
 
+# Get bowtie index
+if REF == "genome":
+	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome"
+elif REF == "transposons":
+	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/transposons/bowtie/transposon"
+
+# Get samples
 SAMPLES = glob.glob(BASEDIR + "/*" + EXTENSION)
 SAMPLES = [ re.search(BASEDIR + "/?([^/]+)" + EXTENSION, x).group(1) for x in SAMPLES ]
 
+# Pipeline
 if len(SAMPLES) == 0:
 	sys.exit("ERROR: no samples in base directory!")
 
@@ -65,14 +71,14 @@ rule bowtie_mapping:
 	params:
 		idx = BOWTIE_INDEX,
 		multi_flag = MULTI_FLAG,
-		mismatch = MISMATCH
+		mismatch_flag = MISMATCH_FLAG
 	log:
 		"logs/{sample}_map.log"
-	threads: 4
+	threads: 8
 	shell: "bowtie -f --best --strata -S \
 		-p {threads} \
 		{params.multi_flag} \
-		-v {params.mismatch} \
+		{params.mismatch_flag} \
 		{params.idx} \
 		{input} {output} > {log} 2>&1" 
 
@@ -90,24 +96,24 @@ rule index_bam:
 if REF != "genome":
 	rule count_reads:
 		input:
-			bam_file = "bam/{sample}.bam"
+			"bam/{sample}.bam"
 		output:
-			"count/{sample}_counts.txt"
-		threads: 4
+			"count/{sample}.txt"
+		threads: 1
 		run:
 			if ANTISENSE:
-				shell('''samtools view -f 16 {input.bam_file} | awk -F '\t' '$2 == "16" ' | grep -v @ | cut -f 3 | sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > {output}''')
+				shell("samtools view -f 16 {input} | cut -f 3 | sort | uniq -c |  sed 's/^[ \t]*//g' | awk -v OFS='\t' '{{print $1,$2}}' > {output}")
 			else:
-				shell('''samtools view {input.bam_file} | awk -F '\t' '$2 == "16" ' | grep -v @ | cut -f 3 | sort | uniq -c | sed -r 's/^( *[^ ]+) +/\1\t/' > {output}''')
+				shell("samtools view {input} | cut -f 3 | sort | uniq -c | sed 's/^[ \t]*//g' | awk -v OFS='\t' '{{print $1,$2}}' > {output}")
 
 	rule merge_counts:
 		input:
 			expand("count/{sample}.txt", sample = SAMPLES)
 		output:
 			"count/counts.txt"
-		threads: 4
-		run:
-			"python /proj/ahmedlab/steve/seq/util/merge_counts.py -o {output} ./count"
+		threads: 1
+		shell:
+			"python3 /proj/ahmedlab/steve/seq/util/merge_counts.py -o {output} {input}"
 
 else:
 	# Count all samples at the same time with subread

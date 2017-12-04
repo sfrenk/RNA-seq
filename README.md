@@ -1,8 +1,6 @@
 # Pipelines for performing RNA-seq analysis in C elegans
 
-These pipelines have been designed to automate RNA-seq data processing in a batch of samples. The final output includes sorted and indexed bam files and read count tables that can be further analyzed using the appropriate scripts provided in the seq-utilities repo. The pipelines also create a file named run_parameters.txt, which contains all the parameters and software versions used in the analysis.
-
-The pipelines have been written for use on the Longleaf computing cluster at UNC - Chapel Hill so they are set up to be used with the SLURM scheduling system, but they can be used on any system with a few slight modifications.
+These pipelines have been written for use with the SLURM scheduling system, but they can be used on any system with a few slight modifications.
 
 ## Pipelines
 
@@ -15,26 +13,16 @@ Note that read trimming and quality filtering are not included in this pipeline,
 
 ### hisat2.sh
 
-Basic pipeline for mapping and counting single/paired end reads using hisat2, a much faster equivalent to tophat made by the same developers. This pipeline includes (optional) adapter trimming. By default, subread featureCounts is used to assign read counts to features. Alternatively, use the the -s/--stringtie option to allow for de-novo transcript assembly. If using the stringtie option, run stringtie.sh after all samples have been processed.
+Basic pipeline for mapping and counting single/paired end reads using hisat2, a much faster equivalent to tophat made by the same developers. This pipeline includes (optional) adapter trimming. Read counting can be done with subread and a reference transcript GTF file. Alternatively, stringtie can be used for de-novo transcriptome assembly.
 
-### stringtie.sh
+## Script types
 
-Performs the stringtie merge and quantification steps. Must be run after running hisat2 with the stringtie option.
+### Snakemake
 
-## Parallelization
+I would recommend using the Snakemake scripts for running these pipelines. To run a pipeline, use setup_dir.sh to copy in the appropriate snakefile and create a bash script for running the pipeline.
 
-The parallelize.sh scrip in the seq-utilities repository can be used to set up any of the sequencing pipelines (apart from stringtie.sh) for parallelization on a SLURM scheduling system.
+setup_dir.sh -d (directory containing samples) -p (pipeline name)
 
-Step 1:
+### Bash scripts
 
-```
-bash parallelize.sh -d /path/to/fastq_files -p pipeline (hisat2/srna/chip)
-```
-
-This will create a copy of the pipeline script called pipeline.sh in the current directory.
-
-Step 2:
-
-```
-sbatch pipeline.sh options
-```
+Use these as a simple alternative to Snakemake (warning - these pipelines may not have been updated recently).
