@@ -89,22 +89,26 @@ rule convert_to_bam:
 		"samtools view -bh -F 4 {input} | samtools sort -o {output} -"
 
 rule index_bam:
-	input: "bam/{sample}.bam"
+	input:
+		"bam/{sample}.bam"
+	output:
+		"bam/{sample}.bam.bai"
 	shell:
 		"samtools index {input}"
 
 if REF != "genome":
 	rule count_reads:
 		input:
-			"bam/{sample}.bam"
+			bamfile = "bam/{sample}.bam",
+			bamidx = "bam/{sample}.bam.bai"
 		output:
 			"count/{sample}.txt"
 		threads: 1
 		run:
 			if ANTISENSE:
-				shell("samtools view -f 16 {input} | cut -f 3 | sort | uniq -c |  sed 's/^[ \t]*//g' | awk -v OFS='\t' '{{print $1,$2}}' > {output}")
+				shell("samtools view -f 16 {input.bamfile} | cut -f 3 | sort | uniq -c |  sed 's/^[ \t]*//g' | awk -v OFS='\t' '{{print $1,$2}}' > {output}")
 			else:
-				shell("samtools view {input} | cut -f 3 | sort | uniq -c | sed 's/^[ \t]*//g' | awk -v OFS='\t' '{{print $1,$2}}' > {output}")
+				shell("samtools view {input.bamfile} | cut -f 3 | sort | uniq -c | sed 's/^[ \t]*//g' | awk -v OFS='\t' '{{print $1,$2}}' > {output}")
 
 	rule merge_counts:
 		input:
@@ -119,7 +123,8 @@ else:
 	# Count all samples at the same time with subread
 	rule count_reads_genome:
 		input:
-			expand("bam/{sample}.bam", sample = SAMPLES)
+			bamfiles = expand("bam/{sample}.bam", sample = SAMPLES),
+			bamidx = expand("bam/{sample}.bam.bai", sample = SAMPLES)
 		output:
 			"count/counts.txt"
 		params:
@@ -129,6 +134,6 @@ else:
 		threads: 4
 		run:
 			if ANTISENSE:
-				shell("featureCounts -M -s 2 -a {params.gtf} -o {output} -T {threads} -t exon -g gene_name {input} > {log} 2>&1")
+				shell("featureCounts -M -s 2 -a {params.gtf} -o {output} -T {threads} -t exon -g gene_name {input.bamfiles} > {log} 2>&1")
 			else:
-				shell("featureCounts -M -a {params.gtf} -o {output} -T {threads} -t exon -g gene_name {input} > {log} 2>&1")
+				shell("featureCounts -M -a {params.gtf} -o {output} -T {threads} -t exon -g gene_name {input.bamfiles} > {log} 2>&1")

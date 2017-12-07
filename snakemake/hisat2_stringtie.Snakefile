@@ -7,7 +7,7 @@ import sys
 # Input parameters
 BASEDIR = ""
 EXTENSION = ""
-PAIRED = True
+PAIRED = False
 
 # Trimming parameters
 ADAPTERS="/nas/longleaf/apps/bbmap/37.62/bbmap/resources/adapters.fa"
@@ -109,7 +109,10 @@ rule convert_to_bam:
 		"samtools view -bh -F 4 {input} | samtools sort -o {output} -"
 
 rule index_bam:
-	input: "bam/{sample}.bam"
+	input:
+		"bam/{sample}.bam"
+	output:
+		"bam/{sample}.bam.bai" 
 	shell:
 		"samtools index {input}"
 
@@ -117,6 +120,7 @@ if COUNT_METHOD == "subread":
 	rule count:
 		input:
 			bamfiles = expand("bam/{sample}.bam", sample = SAMPLES),
+			bamfile_idx = expand("bam/{sample}.bam.bai", sample = SAMPLES),
 			gtf = GTF #gtf = "stringtie/stringtie_merged.gtf"
 		output:
 			"count/counts.txt"
@@ -129,14 +133,15 @@ if COUNT_METHOD == "subread":
 else:
 	rule stringtie_make:
 		input:
-			"bam/{sample}.bam"
+			bamfile = "bam/{sample}.bam",
+			bamidx = "bam/{sample}.bam.bai"
 		output:
 			"stringtie/{sample}.gtf"
 		params:
 			gtf = GTF
 		threads: 8
 		shell:
-			"stringtie {input} -p {threads} -o {output} -G {params.gtf}"
+			"stringtie {input.bamfile} -p {threads} -o {output} -G {params.gtf}"
 
 	rule stringtie_merge:
 		input:
