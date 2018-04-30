@@ -30,6 +30,14 @@ if REF == "genome":
 	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome"
 elif REF == "transposons":
 	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/transposons/bowtie/transposon"
+elif REF == "mrna":
+	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/WS251/mrna/bowtie/mrna"
+elif REF == "mirna":
+	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/mirna/bowtie/mirna"
+elif REF == "repeats":
+	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/repeats/repbase/simple_repeats/bowtie/repeats"
+else:
+	print("ERROR: Unknown reference!")
 
 # Get samples
 SAMPLES = glob.glob(BASEDIR + "/*" + EXTENSION)
@@ -75,7 +83,10 @@ rule bowtie_mapping:
 	log:
 		"logs/{sample}_map.log"
 	threads: 8
-	shell: "bowtie -f --best --strata -S \
+	shell:
+		"module purge; " 
+		"module add bowtie/1.1.2; "
+		"bowtie -f --best --strata -S \
 		-p {threads} \
 		{params.multi_flag} \
 		{params.mismatch_flag} \

@@ -10,10 +10,13 @@ EXTENSION = ""
 PAIRED = False
 
 # Trimming parameters
-ADAPTERS="/nas/longleaf/apps/bbmap/37.62/bbmap/resources/adapters.fa"
+ADAPTERS="~/proj/seq/bbmap/adapters.fa"
 
 # Mapping parameters
 INDEX = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genome/hisat2/genome"
+REMOVE_RDNA = False # Set to True if using ribosome-depleted samples
+RDNA_BED = "/nas02/home/s/f/sfrenk/proj/seq/rdna/rdna_loci.bed"
+
 
 # Counting parameters
 COUNT_METHOD="subread"
@@ -100,13 +103,38 @@ else:
 		threads: 8
 		shell: "hisat2 --max-intronlen 12000 --dta --no-mixed --no-discordant -p {threads} -x {params.idx_base} -U {input} -S {output} > {log} 2>&1"
 
-rule convert_to_bam:
-	input:
-		"hisat2_out/{sample}.sam"
-	output:
-		"bam/{sample}.bam"
-	shell:
-		"samtools view -bh -F 4 {input} | samtools sort -o {output} -"
+if REMOVE_RDNA == True:
+
+	rule convert_to_bam:
+		input:
+			"hisat2_out/{sample}.sam"
+		output:
+			"temp/{sample}.temp.bam"
+		params:
+			rdna_bed = RDNA_BED
+		shell:
+			"samtools view -bh -L {params.rdna_bed} {input} -U {output}"
+
+
+	rule sort_bam:
+		input:
+			"temp/{sample}.temp.bam"
+		output:
+			"bam/{sample}.bam"
+		params:
+			rdna_bed = RDNA_BED
+		shell:
+			"samtools view -bh -F 4 {input} | samtools sort -o {output} -"
+
+else:
+
+	rule convert_to_bam:
+		input:
+			"hisat2_out/{sample}.sam"
+		output:
+			"bam/{sample}.bam"
+		shell:
+			"samtools view -bh -F 4 {input} | samtools sort -o {output} -"
 
 rule index_bam:
 	input:

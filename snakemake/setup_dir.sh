@@ -49,11 +49,11 @@ fi
 case $pipeline in
 	"srna_telo")
 	snakefile="srna_telo.Snakefile"
-	modules="anaconda python bowtie/1.1.2 samtools subread"
+	modules="python samtools subread"
 	;;
 	"bowtie_srna")
 	snakefile="bowtie_srna.Snakefile"
-	modules="anaconda python bowtie/1.1.2 samtools subread"
+	modules="python samtools subread"
 	;;
 	"hisat2_stringtie")
 	snakefile='hisat2_stringtie.Snakefile'
@@ -61,14 +61,14 @@ case $pipeline in
 	;;
 	"chip_seq")
 	snakefile='chip_seq.Snakefile'
-	modules="anaconda python bbmap bowtie/1.1.2 samtools"
+	modules="python bbmap samtools"
 	;;
-	"gatk")
+	"gatk"|"call_variants")
 	snakefile='call_variants.Snakefile'
-	modules="python bbmap bwa samtools gatk picard"
+	modules="python bbmap bwa samtools gatk picard vcftools r perl bedtools"
 	;;
 	*)
-	echo "ERROR: Invalid pipeline. Please select one of the following: bowtie_srna, hisat2_stringtie, srna_telo, chip_seq"
+	echo "ERROR: Invalid pipeline. Please select one of the following: bowtie_srna, hisat2_stringtie, chip_seq, gatk"
 	exit 1
 	;;
 esac
@@ -98,6 +98,7 @@ extension="\"${extension}\""
 sed -i -r -e "s/^EXTENSION.*/EXTENSION = ${extension}/g" "$snakefile"
 
 # Create Snakmake command script
-printf "#!/usr/bin/bash\n\n" > "run_snakemake.sh"
+printf "#!/usr/bin/bash\n" > "run_snakemake.sh"
+printf "#SBATCH -t 2-0\n\n" >> "run_snakemake.sh"
 printf "module add $modules\n\n" >> "run_snakemake.sh"
 printf "snakemake -s $snakefile --cluster-config ${snakedir}/cluster.json -j 100 --cluster \"sbatch -n {cluster.n} -N {cluster.N} -t {cluster.time}\"\n" >> "run_snakemake.sh"
