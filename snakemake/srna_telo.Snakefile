@@ -19,11 +19,20 @@ MIN_TRIM_LENGTH = 0
 MULTI_FLAG = "-M 1"
 MISMATCH_FLAG = "-v 0"
 TELO_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/telomere/bowtie/telomere"
-GENOME_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome"
+SPECIES = "elegans"
 
 ###############################################################################
 
-DATASET = re.search("/([^/]*)/?$", BASEDIR).group(1)
+# Get bowtie index for species
+indexes = {"elegans" : "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome", "remanei" : "/nas/longleaf/home/sfrenk/proj/seq/remanei/bowtie/genome", "briggsae" : "/nas/longleaf/home/sfrenk/proj/seq/briggsae/WS263/bowtie/genome"}
+
+if SPECIES not in indexes:
+	print("ERROR: Unknown reference!")
+else:
+	GENOME_INDEX = indexes[SPECIES]
+
+
+DATASET = re.search("([^/]*)/?$", BASEDIR).group(1)
 SAMPLES = glob.glob(BASEDIR + "/*" + EXTENSION)
 SAMPLES = [ re.search(BASEDIR + "/?([^/]+)" + EXTENSION, x).group(1) for x in SAMPLES ]
 
@@ -69,7 +78,8 @@ rule bowtie_mapping_genome:
 		"logs/{sample}_map_genome.log"
 	threads: 8
 	shell:
-		"module add bowtie; "
+		"module purge; " 
+		"module add bowtie/1.1.2; "
 		"bowtie -f --best --strata -S \
 		-p {threads} \
 		{params.multi_flag} \
@@ -106,7 +116,8 @@ rule map_telo_0_mismatch:
 	log:
 		"logs/{sample}_map_0.log"
 	shell:
-		"module add bowtie; "
+		"module purge; " 
+		"module add bowtie/1.1.2 samtools; "
 		"bowtie -f --best --strata -M 1 -S -v 0 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
 
 rule map_telo_1_mismatch:
@@ -122,7 +133,8 @@ rule map_telo_1_mismatch:
 	log:
 		"logs/{sample}_map_1.log"
 	shell:
-		"module add bowtie; "
+		"module purge; " 
+		"module add bowtie/1.1.2 samtools; "
 		"bowtie -f --best --strata -M 1 -S -v 1 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
 
 rule map_telo_2_mismatch:
@@ -138,7 +150,8 @@ rule map_telo_2_mismatch:
 	log:
 		"logs/{sample}_map_2.log"
 	shell:
-		"module add bowtie; "
+		"module purge; " 
+		"module add bowtie/1.1.2 samtools; "
 		"bowtie -f --best --strata -M 1 -S -v 2 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
 
 rule map_telo_3_mismatch:
@@ -154,7 +167,8 @@ rule map_telo_3_mismatch:
 	log:
 		"logs/{sample}_map_3.log"
 	shell:
-		"module add bowtie; "
+		"module purge; " 
+		"module add bowtie/1.1.2 samtools; "
 		"bowtie -f --best --strata -M 1 -S -v 3 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
 
 rule merge_telo_reads:
@@ -187,6 +201,8 @@ rule map_telo_reads_to_genome:
 		idx = GENOME_INDEX
 	threads: 8
 	shell:
+		"module purge; " 
+		"module add samtools bowtie/1.1.2; "
 		"if [[ $(wc -l < {input.fasta}) -eq 0 ]]; then samtools view -bH {input.genome_bam} > {output}; else bowtie -f --best --strata -a -S -v 0 -p {threads} {params.idx} {input.fasta} | samtools view -bh -F 4 - | samtools sort -o {output} -; fi"
 
 rule convert_data:
