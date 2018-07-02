@@ -3,11 +3,15 @@ import re
 import sys
 import os
 
+### NEW AND IMPROVED PIPELINE ###
+#	Genome mapping with butter
+
+
 ############################    PARAMETERS    ##############################
 
 # Input parameters
-BASEDIR = ""
-EXTENSION = ".fa.gz"
+BASEDIR = "raw_compiled"
+EXTENSION = ".txt.gz"
 
 # Filtering parameters
 FILTER_BASE = "A,T,C,G"
@@ -16,25 +20,23 @@ TRIM = False
 MIN_TRIM_LENGTH = 0
 
 # Mapping parameters
-MULTI_FLAG = "-M 1"
-MISMATCH_FLAG = "-v 0"
 TELO_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/telomere/bowtie/telomere"
 SPECIES = "elegans"
 
 ###############################################################################
 
 # Get bowtie index for species
-indexes = {"elegans" : "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome", "remanei" : "/nas/longleaf/home/sfrenk/proj/seq/remanei/bowtie/genome", "briggsae" : "/nas/longleaf/home/sfrenk/proj/seq/briggsae/WS263/bowtie/genome"}
+refs = {"elegans" : "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome.fa", "remanei" : "/nas/longleaf/home/sfrenk/proj/seq/remanei/bowtie/genome.fa", "briggsae" : "/nas/longleaf/home/sfrenk/proj/seq/briggsae/WS263/bowtie/genome.fa"}
 
-if SPECIES not in indexes:
+if SPECIES not in refs:
 	print("ERROR: Unknown reference!")
 else:
-	GENOME_INDEX = indexes[SPECIES]
-
+	REF = refs[SPECIES]
 
 DATASET = re.search("([^/]*)/?$", BASEDIR).group(1)
 SAMPLES = glob.glob(BASEDIR + "/*" + EXTENSION)
 SAMPLES = [ re.search(BASEDIR + "/?([^/]+)" + EXTENSION, x).group(1) for x in SAMPLES ]
+
 
 if len(SAMPLES) == 0:
 	sys.exit("ERROR: no samples in base directory!")
@@ -66,42 +68,24 @@ rule filter_srna:
 		-o {output} \
 		{input} > {log} 2>&1"
 
-rule bowtie_mapping_genome:
+rule butter_mapping_genome:
 	input:
-		reads_file = "filtered/{sample}.fa"
-	output: "bowtie_out/{sample}.sam"
+		"filtered/{sample}.fa"
+	output:
+		bamfile = "genome/{sample}_genome.bam",
+		bamidx = "genome/{sample}_genome.bam.bai"
 	params:
-		idx = GENOME_INDEX,
-		multi_flag = MULTI_FLAG,
-		mismatch_flag = MISMATCH_FLAG
+		ref = REF,
+		sample_name="{sample}"
 	log:
 		"logs/{sample}_map_genome.log"
 	threads: 8
 	shell:
 		"module purge; " 
-		"module add bowtie/1.1.2; "
-		"bowtie -f --best --strata -S \
-		-p {threads} \
-		{params.multi_flag} \
-		{params.mismatch_flag} \
-		{params.idx} \
-		{input.reads_file} {output} > {log} 2>&1"
-
-rule convert_to_bam:
-	input: "bowtie_out/{sample}.sam"
-	output:
-		tempfile = "genome/{sample}/temp.bam",
-		bamfile = "genome/{sample}_genome.bam"
-	run:
-		shell("samtools view -bh -F 4 {input} > {output.tempfile}")
-		shell("samtools sort -o {output.bamfile} {output.tempfile}")
-
-rule index_bam:
-	input: "genome/{sample}_genome.bam"
-	output:
-		"genome/{sample}_genome.bam.bai"
-	shell:
-		"samtools index {input}"
+		"module add bowtie/1.1.2 perl samtools/0.1.19; "
+		"butter --no_condense --aln_cores {threads} --max_rep 10000 --bam2wig none {input} {params.ref} > {log} 2>&1; "
+		"mv filtered/{params.sample_name}.bam genome/{params.sample_name}_genome.bam; "
+		"mv filtered/{params.sample_name}.bam.bai genome/{params.sample_name}_genome.bam.bai; "
 
 rule map_telo_0_mismatch:
 	input: "filtered/{sample}.fa"
@@ -198,7 +182,7 @@ rule map_telo_reads_to_genome:
 		fasta = "fasta/{sample}_all.fa"
 	output: "telo/{sample}_genome.bam"
 	params:
-		idx = GENOME_INDEX
+		idx = REF
 	threads: 8
 	shell:
 		"module purge; " 
