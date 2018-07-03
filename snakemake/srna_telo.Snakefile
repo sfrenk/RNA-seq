@@ -21,17 +21,24 @@ MIN_TRIM_LENGTH = 0
 
 # Mapping parameters
 TELO_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/telomere/bowtie/telomere"
-SPECIES = "elegans"
+#SPECIES = "elegans"
 
 ###############################################################################
 
 # Get bowtie index for species
 refs = {"elegans" : "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome.fa", "remanei" : "/nas/longleaf/home/sfrenk/proj/seq/remanei/bowtie/genome.fa", "briggsae" : "/nas/longleaf/home/sfrenk/proj/seq/briggsae/WS263/bowtie/genome.fa"}
 
-if SPECIES not in refs:
-	print("ERROR: Unknown reference!")
-else:
-	REF = refs[SPECIES]
+def get_species(sample_name):
+
+	species=re.match("elegans|briggsae|remanei", "{sample}")
+	if species is None:
+		species="elegans"
+	return(species)
+
+#if SPECIES not in refs:
+#	print("ERROR: Unknown reference!")
+#else:
+#	REF = refs[SPECIES]
 
 DATASET = re.search("([^/]*)/?$", BASEDIR).group(1)
 SAMPLES = glob.glob(BASEDIR + "/*" + EXTENSION)
@@ -75,15 +82,15 @@ rule butter_mapping_genome:
 		bamfile = "genome/{sample}_genome.bam",
 		bamidx = "genome/{sample}_genome.bam.bai"
 	params:
-		ref = REF,
+		ref = refs[get_species("{sample}")],
 		sample_name="{sample}"
 	log:
 		"logs/{sample}_map_genome.log"
 	threads: 8
 	shell:
 		"module purge; " 
-		"module add bowtie/1.1.2 perl samtools/0.1.19; "
-		"butter --no_condense --aln_cores {threads} --max_rep 10000 --bam2wig none {input} {params.ref} > {log} 2>&1; "
+		"module add bowtie/1.1.2 perl samtools/0.1.19 && \
+		butter --no_condense --aln_cores {threads} --max_rep 10000 --bam2wig none {input} {params.ref} > {log} 2>&1; "
 		"mv filtered/{params.sample_name}.bam genome/{params.sample_name}_genome.bam; "
 		"mv filtered/{params.sample_name}.bam.bai genome/{params.sample_name}_genome.bam.bai; "
 
@@ -101,8 +108,8 @@ rule map_telo_0_mismatch:
 		"logs/{sample}_map_0.log"
 	shell:
 		"module purge; " 
-		"module add bowtie/1.1.2 samtools; "
-		"bowtie -f --best --strata -M 1 -S -v 0 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
+		"module add bowtie/1.1.2 samtools/1.8 && \
+		bowtie -f --best --strata -M 1 -S -v 0 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
 
 rule map_telo_1_mismatch:
 	input: "fasta/{sample}_unmapped_0.fa"
@@ -118,8 +125,8 @@ rule map_telo_1_mismatch:
 		"logs/{sample}_map_1.log"
 	shell:
 		"module purge; " 
-		"module add bowtie/1.1.2 samtools; "
-		"bowtie -f --best --strata -M 1 -S -v 1 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
+		"module add bowtie/1.1.2 samtools/1.8 && \
+		bowtie -f --best --strata -M 1 -S -v 1 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
 
 rule map_telo_2_mismatch:
 	input: "fasta/{sample}_unmapped_1.fa"
@@ -135,8 +142,8 @@ rule map_telo_2_mismatch:
 		"logs/{sample}_map_2.log"
 	shell:
 		"module purge; " 
-		"module add bowtie/1.1.2 samtools; "
-		"bowtie -f --best --strata -M 1 -S -v 2 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
+		"module add bowtie/1.1.2 samtools/1.8 && \
+		bowtie -f --best --strata -M 1 -S -v 2 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
 
 rule map_telo_3_mismatch:
 	input: "fasta/{sample}_unmapped_2.fa"
@@ -152,8 +159,8 @@ rule map_telo_3_mismatch:
 		"logs/{sample}_map_3.log"
 	shell:
 		"module purge; " 
-		"module add bowtie/1.1.2 samtools; "
-		"bowtie -f --best --strata -M 1 -S -v 3 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
+		"module add bowtie/1.1.2 samtools/1.8 && \
+		bowtie -f --best --strata -M 1 -S -v 3 -p {threads} --al {params.al} --un {output.un} --max {params.m} {params.telo_index} {input} | samtools view -bh -F 4 - | samtools sort -o {output.bam} - > {log} 2>&1"
 
 rule merge_telo_reads:
 	input: "fasta/{sample}_unmapped_3.fa"
@@ -174,7 +181,7 @@ rule get_sample_info:
 		dataset = DATASET,
 		sample_name = "{sample}"
 	run:
-		shell('''telo_reads=$(wc -l < {input.telo_reads_file}); samtools view -c {input.genome_bam} | awk -v var="$telo_reads" '{{ print "{params.dataset}_{params.sample_name}\t{params.dataset}\t{params.sample_name}\t"$0"\t"var }}' > {output}''')
+		shell('''telo_reads=$(wc -l < {input.telo_reads_file}); module add samtools/1.8 && samtools view -c {input.genome_bam} | awk -v var="$telo_reads" '{{ print "{params.dataset}_{params.sample_name}\t{params.dataset}\t{params.sample_name}\t"$0"\t"var }}' > {output}''')
 
 rule map_telo_reads_to_genome:
 	input: 
@@ -182,12 +189,12 @@ rule map_telo_reads_to_genome:
 		fasta = "fasta/{sample}_all.fa"
 	output: "telo/{sample}_genome.bam"
 	params:
-		idx = REF
+		idx = refs[get_species("{sample}")]
 	threads: 8
 	shell:
 		"module purge; " 
-		"module add samtools bowtie/1.1.2; "
-		"if [[ $(wc -l < {input.fasta}) -eq 0 ]]; then samtools view -bH {input.genome_bam} > {output}; else bowtie -f --best --strata -a -S -v 0 -p {threads} {params.idx} {input.fasta} | samtools view -bh -F 4 - | samtools sort -o {output} -; fi"
+		"module add bowtie/1.1.2 samtools/1.8 && \
+		if [[ $(wc -l < {input.fasta}) -eq 0 ]]; then samtools view -bH {input.genome_bam} > {output}; else bowtie -f --best --strata -a -S -v 0 -p {threads} {params.idx} {input.fasta} | samtools view -bh -F 4 - | samtools sort -o {output} -; fi"
 
 rule convert_data:
 	input: "telo/{sample}_genome.bam"
@@ -198,7 +205,7 @@ rule convert_data:
 		dataset = DATASET,
 		sample_name = "{sample}"
 	run:
-		shell('''if [[ $(samtools view {input} | wc -l) -eq 0 ]]; then touch {output.alignment_file}; else samtools view {input} | awk -v OFS="\t" -v d={params.dataset} -v s={params.sample_name} '{{print d"_"s"_"$1,$3,$4,1-($2/16),$6}}' > {output.alignment_file}; fi''')
+		shell('''module add samtools/1.8 && if [[ $(samtools view {input} | wc -l) -eq 0 ]]; then touch {output.alignment_file}; else samtools view {input} | awk -v OFS="\t" -v d={params.dataset} -v s={params.sample_name} '{{print d"_"s"_"$1,$3,$4,1-($2/16),$6}}' > {output.alignment_file}; fi''')
 		shell("compile_data -d {params.dataset} -b fasta/{params.sample_name} -o {output.reads_file}")
 
 rule store_results:
