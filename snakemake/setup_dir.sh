@@ -49,23 +49,22 @@ fi
 case $pipeline in
 	"srna_telo")
 	snakefile="srna_telo.Snakefile"
-	modules="python samtools subread"
 	;;
 	"bowtie_srna")
 	snakefile="bowtie_srna.Snakefile"
-	modules="python samtools subread"
 	;;
 	"hisat2_stringtie")
 	snakefile='hisat2_stringtie.Snakefile'
-	modules="python bbmap hisat2 samtools subread"
 	;;
 	"chip_seq")
 	snakefile='chip_seq.Snakefile'
-	modules="python bbmap samtools"
 	;;
 	"gatk"|"call_variants")
 	snakefile='call_variants.Snakefile'
-	modules="python bbmap bwa samtools gatk picard vcftools r perl bedtools"
+	;;
+	"gatk_human"|"call_variants_human")
+	snakefile='call_variants_human_germline.Snakefile'
+	modules="python"
 	;;
 	*)
 	echo "ERROR: Invalid pipeline. Please select one of the following: bowtie_srna, hisat2_stringtie, chip_seq, gatk"
@@ -77,18 +76,19 @@ esac
 cp ${snakedir}/${snakefile} ./${snakefile}
 
 # Edit base directory in Snakefile
-base="$(basename ${dir})"
-sed -r -i -e "s,^BASEDIR.*,BASEDIR = \"${dir}\"," "$snakefile"
+# Remove trailing "/" from dir if it's there 
+dir_name="$(echo $dir |sed -r 's/\/$//')"
+sed -r -i -e "s,^BASEDIR.*,BASEDIR = \"${dir_name}\"," "$snakefile"
 
 # Determine file extension
-extension="$(ls $dir | grep -Eo "\.[^/]+" | sort | uniq)"
+extension="$(ls $dir | grep -Eo "\.[^/]+(\.gz)?$" | sort | uniq)"
 
 # Check if there are multiple file extensions in the same directory
 ext_count="$(echo $extension | wc -l)"
 
-if [[ ext_count == 0 ]]; then
+if [[ $ext_count == 0 ]]; then
 	echo "ERROR: Directory is empty!"
-elif [[ ext_count != 1 ]]; then
+elif [[ $ext_count -gt 1 ]]; then
 	echo "WARNING: Multiple file extensions found: using .fastq.gz"
 	extension=".fastq.gz"
 fi
@@ -100,5 +100,5 @@ sed -i -r -e "s/^EXTENSION.*/EXTENSION = ${extension}/g" "$snakefile"
 # Create Snakmake command script
 printf "#!/usr/bin/bash\n" > "run_snakemake.sh"
 printf "#SBATCH -t 2-0\n\n" >> "run_snakemake.sh"
-printf "module add $modules\n\n" >> "run_snakemake.sh"
-printf "snakemake -s $snakefile --cluster-config ${snakedir}/cluster.json -j 100 --cluster \"sbatch -n {cluster.n} -N {cluster.N} -t {cluster.time}\"\n" >> "run_snakemake.sh"
+printf "module add python\n\n" >> "run_snakemake.sh"
+printf "snakemake -s $snakefile --keep-going --rerun-incomplete --cluster-config ${snakedir}/cluster.json -j 100 --cluster \"sbatch -n {cluster.n} -N {cluster.N} -t {cluster.time}\"\n" >> "run_snakemake.sh"
