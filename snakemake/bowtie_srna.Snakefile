@@ -63,7 +63,7 @@ rule filter_srna:
 		"logs/{sample}_filter.log"
 	shell:
 		"module add python; "
-		"python3 {paras.utils_dir}/small_rna_filter.py \
+		"python3 {params.utils_dir}/small_rna_filter.py \
 		-f {params.filter_base} \
 		-s {params.size} \
 		-t {params.trim} \

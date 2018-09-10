@@ -192,7 +192,7 @@ else:
 			"stringtie/stringtie_merged.gtf"
 		params:
 			gtf = GTF
-		logs:
+		log:
 			"logs/stringtie_merge.log"
 		threads: 8
 		run:

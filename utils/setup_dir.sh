@@ -1,16 +1,16 @@
-#!/usr/bin/env bash -e
+#!/usr/bin/bash
 
 # Hard variables
 
 # Directory containing Snakemake and cluster.json files
-snakedir='/nas/longleaf/home/sfrenk/pipelines/snakemake'
+snakefile_dir='/nas/longleaf/home/sfrenk/pipelines/snakemake'
 
-usage="Create directory with Snakemake files required for pipeline \n\n setup_dir -p <pipeline> -d <directory> \n\n pipelines: bowtie_srna, hisat2_rna, srna_telo"
+usage="\nCreate directory with Snakemake files required for pipeline \n\n setup_dir -p <pipeline> -d <directory> \n\n pipelines: bowtie_srna, hisat2_rna, srna_telo\n\n"
 
 pipeline=""
 
 if [ -z "$1" ]; then
-    echo "$usage"
+    printf "$usage"
     exit
 fi
 
@@ -41,17 +41,17 @@ if [[ ! -d $dir ]]; then
 fi
 
 if [[ $pipeline == "" ]]; then
-	echo "ERROR: Please select pipeline"
+	echo "ERROR: Please select pipeline: bowtie_srna or hisat2_rna"
 	exit 1
 fi
 
 # Determine pipeline file
 case $pipeline in
-	"bowtie_srna|bowtie_sRNA")
+	"bowtie_srna"|"bowtie_sRNA")
 	snakefile="bowtie_srna.Snakefile"
 	;;
-	"hisat2_rna|hisat2_RNA")
-	snakefile='hisat2_stringtie.Snakefile'
+	"hisat2_rna"|"hisat2_RNA")
+	snakefile='hisat2_rna.Snakefile'
 	;;
 	"srna_telo")
 	snakefile="srna_telo.Snakefile"
@@ -63,35 +63,35 @@ case $pipeline in
 esac
 
 # Copy over the snakefile
-cp ${snakedir}/${snakefile} ./${snakefile}
+cp ${snakefile_dir}/${snakefile} ./${snakefile}
 
 # Edit base directory in Snakefile
 # Remove trailing "/" from dir if it's there 
-dir_name="$(echo $dir |sed -r 's/\/$//')"
-sed -r -i -e "s,^BASEDIR.*,BASEDIR = \"${dir_name}\"," "$snakefile"
+input_dir="$(echo $dir |sed -r 's/\/$//')"
+input_dir=\"${input_dir}\"
+sed -i -e "s|^BASEDIR.*|BASEDIR = ${input_dir}|" $snakefile
 
 # Determine file extension
 extension="$(ls $dir | grep -Eo "\.[^/]+(\.gz)?$" | sort | uniq)"
 
 # Check if there are multiple file extensions in the same directory
-ext_count="$(echo $extension | wc -l)"
-
+ext_count="$(ls $dir | grep -Eo "\.[^/]+(\.gz)?$" | sort | uniq | wc -l)"
 if [[ $ext_count == 0 ]]; then
 	echo "ERROR: Directory is empty!"
-elif [[ $ext_count -gt 1 ]]; then
+elif [[ $ext_count != 1 ]]; then
 	echo "WARNING: Multiple file extensions found: using .fastq.gz"
 	extension=".fastq.gz"
 fi
 
 # Edit extension and utils_dir in Snakefile
 extension="\"${extension}\""
-sed -i -e "s|^EXTENSION.*|EXTENSION = ${extension}|g" "$snakefile"
+sed -i -e "s|^EXTENSION.*|EXTENSION = ${extension}|g" $snakefile
 utils_dir="${snakefile_dir%/snakemake}/utils"
 utils_dir="\"${utils_dir}\""
-sed -i -e "s|^UTILS_DIR.*|UTILS_DIR = ${utils_dir}|g" "$snakefile"
+sed -i -e "s|^UTILS_DIR.*|UTILS_DIR = ${utils_dir}|g" $snakefile
 
 # Create Snakmake command script
 printf "#!/usr/bin/bash\n" > "run_snakemake.sh"
 printf "#SBATCH -t 2-0\n\n" >> "run_snakemake.sh"
 printf "module add python\n\n" >> "run_snakemake.sh"
-printf "snakemake -s $snakefile --keep-going --rerun-incomplete --cluster-config ${snakedir}/cluster.json -j 100 --cluster \"sbatch -n {cluster.n} -N {cluster.N} -t {cluster.time}\"\n" >> "run_snakemake.sh"
+printf "snakemake -s $snakefile --keep-going --rerun-incomplete --cluster-config ${snakefile_dir}/cluster.json -j 100 --cluster \"sbatch -n {cluster.n} -N {cluster.N} -t {cluster.time}\"\n" >> run_snakemake.sh
