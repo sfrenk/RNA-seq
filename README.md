@@ -29,14 +29,14 @@ bash run_snakemake.sh
 
 ## Pipelines
 
-### (bowtie_sRNA)[snakemake/bowtie_srna.Snakefile]
+(bowtie_sRNA)[snakemake/bowtie_srna.Snakefile]
 
 Analysis pipeline for small RNA reads. Reads in raw/fasta/fastq format are mapped to specified reference sequence and can optionally be: 
 	a) filtered for 22G and/or 21U RNAs
 	b) counted
 Note that read trimming and quality filtering are not included in this pipeline, and should therefore be performed using separate tools beforehand.
 
-### (hisat2_RNA)[snakemake/hisat2_rna.Snakefile]
+(hisat2_RNA)[snakemake/hisat2_rna.Snakefile]
 
 Basic pipeline for mapping and counting single/paired end reads using hisat2, a much faster equivalent to tophat made by the same developers. This pipeline includes (optional) adapter trimming. Read counting can be done with subread and a reference transcript GTF file. Alternatively, stringtie can be used for de-novo transcriptome assembly.
 
