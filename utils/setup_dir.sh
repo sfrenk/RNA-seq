@@ -1,11 +1,11 @@
-#!/usr/bin/env bash
+#!/usr/bin/env bash -e
 
 # Hard variables
 
 # Directory containing Snakemake and cluster.json files
 snakedir='/nas/longleaf/home/sfrenk/pipelines/snakemake'
 
-usage="Create directory with Snakemake files required for pipeline \n\n setup_dir -p <pipeline> -d <directory> \n\n pipelines: srna_telo, bowtie_srna, hisat2_stringtie, chip_seq, gatk"
+usage="Create directory with Snakemake files required for pipeline \n\n setup_dir -p <pipeline> -d <directory> \n\n pipelines: bowtie_srna, hisat2_rna, srna_telo"
 
 pipeline=""
 
@@ -47,27 +47,17 @@ fi
 
 # Determine pipeline file
 case $pipeline in
+	"bowtie_srna|bowtie_sRNA")
+	snakefile="bowtie_srna.Snakefile"
+	;;
+	"hisat2_rna|hisat2_RNA")
+	snakefile='hisat2_stringtie.Snakefile'
+	;;
 	"srna_telo")
 	snakefile="srna_telo.Snakefile"
 	;;
-	"bowtie_srna")
-	snakefile="bowtie_srna.Snakefile"
-	;;
-	"hisat2_stringtie")
-	snakefile='hisat2_stringtie.Snakefile'
-	;;
-	"chip_seq")
-	snakefile='chip_seq.Snakefile'
-	;;
-	"gatk"|"call_variants")
-	snakefile='call_variants.Snakefile'
-	;;
-	"gatk_human"|"call_variants_human")
-	snakefile='call_variants_human_germline.Snakefile'
-	modules="python"
-	;;
 	*)
-	echo "ERROR: Invalid pipeline. Please select one of the following: bowtie_srna, hisat2_stringtie, chip_seq, gatk"
+	echo "ERROR: Invalid pipeline. Please select one of the following: bowtie_srna, hisat2_rna or srna_telo"
 	exit 1
 	;;
 esac
@@ -93,9 +83,12 @@ elif [[ $ext_count -gt 1 ]]; then
 	extension=".fastq.gz"
 fi
 
-# Edit extension in Snakefile
+# Edit extension and utils_dir in Snakefile
 extension="\"${extension}\""
-sed -i -r -e "s/^EXTENSION.*/EXTENSION = ${extension}/g" "$snakefile"
+sed -i -e "s|^EXTENSION.*|EXTENSION = ${extension}|g" "$snakefile"
+utils_dir="${snakefile_dir%/snakemake}/utils"
+utils_dir="\"${utils_dir}\""
+sed -i -e "s|^UTILS_DIR.*|UTILS_DIR = ${utils_dir}|g" "$snakefile"
 
 # Create Snakmake command script
 printf "#!/usr/bin/bash\n" > "run_snakemake.sh"

@@ -23,21 +23,18 @@ REF = "genome"
 ANTISENSE =  False
 GTF = "/nas02/home/s/f/sfrenk/proj/seq/WS251/genes.gtf"
 
+# Utils directory
+UTILS_DIR="/nas/longleaf/home/sfrenk/scripts/util"
+
 ###############################################################################
 
 # Get bowtie index
-if REF == "genome":
-	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome"
-elif REF == "transposons":
-	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/transposons/bowtie/transposon"
-elif REF == "mrna":
-	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/WS251/mrna/bowtie/mrna"
-elif REF == "mirna":
-	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/mirna/bowtie/mirna"
-elif REF == "repeats":
-	BOWTIE_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/repeats/repbase/simple_repeats/bowtie/repeats"
-else:
+indexes = {"genome" : "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome", "transposons" : "/nas/longleaf/home/sfrenk/proj/seq/transposons/bowtie/transposon", "mrna" : "/nas/longleaf/home/sfrenk/proj/seq/WS251/mrna/bowtie/mrna", "mirna" : "/nas/longleaf/home/sfrenk/proj/seq/mirna/bowtie/mirna", "repeats" : "/nas/longleaf/home/sfrenk/proj/seq/repeats/repbase/simple_repeats/bowtie/repeats", "remanei" : "/nas/longleaf/home/sfrenk/proj/seq/remanei/bowtie/genome", "briggsae" : "/nas/longleaf/home/sfrenk/proj/seq/briggsae/WS263/bowtie/genome"}
+
+if REF not in indexes:
 	print("ERROR: Unknown reference!")
+else:
+	BOWTIE_INDEX = indexes[REF]
 
 # Get samples
 SAMPLES = glob.glob(BASEDIR + "/*" + EXTENSION)
@@ -60,11 +57,13 @@ rule filter_srna:
 		filter_base = FILTER_BASE,
 		size = SIZE,
 		trim = TRIM,
-		min_trim_length = MIN_TRIM_LENGTH
+		min_trim_length = MIN_TRIM_LENGTH,
+		utils_dir = UTILS_DIR
 	log:
 		"logs/{sample}_filter.log"
 	shell:
-		"small_rna_filter \
+		"module add python; "
+		"python3 {paras.utils_dir}/small_rna_filter.py \
 		-f {params.filter_base} \
 		-s {params.size} \
 		-t {params.trim} \
@@ -97,6 +96,7 @@ rule convert_to_bam:
 	input: "bowtie_out/{sample}.sam"
 	output: "bam/{sample}.bam"
 	shell:
+		"module add samtools; "
 		"samtools view -bh -F 4 {input} | samtools sort -o {output} -"
 
 rule index_bam:
@@ -105,6 +105,7 @@ rule index_bam:
 	output:
 		"bam/{sample}.bam.bai"
 	shell:
+		"module add samtools; "
 		"samtools index {input}"
 
 if REF != "genome":
@@ -117,18 +118,21 @@ if REF != "genome":
 		threads: 1
 		run:
 			if ANTISENSE:
-				shell("samtools view -f 16 {input.bamfile} | cut -f 3 | sort | uniq -c |  sed 's/^[ \t]*//g' | awk -v OFS='\t' '{{print $1,$2}}' > {output}")
+				shell("module add samtools; samtools view -f 16 {input.bamfile} | cut -f 3 | sort | uniq -c |  sed 's/^[ \t]*//g' | awk -v OFS='\t' '{{print $1,$2}}' > {output}")
 			else:
-				shell("samtools view {input.bamfile} | cut -f 3 | sort | uniq -c | sed 's/^[ \t]*//g' | awk -v OFS='\t' '{{print $1,$2}}' > {output}")
+				shell("module add samtools; samtools view {input.bamfile} | cut -f 3 | sort | uniq -c | sed 's/^[ \t]*//g' | awk -v OFS='\t' '{{print $1,$2}}' > {output}")
 
 	rule merge_counts:
 		input:
 			expand("count/{sample}.txt", sample = SAMPLES)
 		output:
 			"count/counts.txt"
+		params:
+			utils_dir = UTILS_DIR
 		threads: 1
 		shell:
-			"python3 /proj/ahmedlab/steve/seq/util/merge_counts.py -o {output} {input}"
+			"module add python; "
+			"python3 {utils_dir}/merge_counts.py -o {output} {input}"
 
 else:
 	# Count all samples at the same time with subread
@@ -145,6 +149,6 @@ else:
 		threads: 4
 		run:
 			if ANTISENSE:
-				shell("featureCounts -M -s 2 -a {params.gtf} -o {output} -T {threads} -t exon -g gene_name {input.bamfiles} > {log} 2>&1")
+				shell("module add subread; featureCounts -M -s 2 -a {params.gtf} -o {output} -T {threads} -t exon -g gene_name {input.bamfiles} > {log} 2>&1")
 			else:
-				shell("featureCounts -M -a {params.gtf} -o {output} -T {threads} -t exon -g gene_name {input.bamfiles} > {log} 2>&1")
+				shell("module add subread; featureCounts -M -a {params.gtf} -o {output} -T {threads} -t exon -g gene_name {input.bamfiles} > {log} 2>&1")

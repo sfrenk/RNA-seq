@@ -21,19 +21,26 @@ MIN_TRIM_LENGTH = 0
 
 # Mapping parameters
 TELO_INDEX = "/nas/longleaf/home/sfrenk/proj/seq/telomere/bowtie/telomere"
-#SPECIES = "elegans"
+
+# Other parameters
+UTILS_DIR = "/nas/longleaf/home/sfrenk/scripts/util"
 
 ###############################################################################
 
 # Get bowtie index for species
 refs = {"elegans" : "/nas/longleaf/home/sfrenk/proj/seq/WS251/genome/bowtie/genome.fa", "remanei" : "/nas/longleaf/home/sfrenk/proj/seq/remanei/bowtie/genome.fa", "briggsae" : "/nas/longleaf/home/sfrenk/proj/seq/briggsae/WS263/bowtie/genome.fa"}
 
-def get_species(sample_name):
+def get_ref(sample_name):
 
-	species=re.match("elegans|briggsae|remanei", "{sample}")
+	species=re.search("elegans|briggsae|remanei", sample_name)
 	if species is None:
 		species="elegans"
-	return(species)
+	else:
+		species = species.group(0)
+	
+	species_ref = refs[species]
+	
+	return(species_ref)
 
 #if SPECIES not in refs:
 #	print("ERROR: Unknown reference!")
@@ -63,11 +70,13 @@ rule filter_srna:
 		filter_base = FILTER_BASE,
 		size = SIZE,
 		trim = TRIM,
-		min_trim_length = MIN_TRIM_LENGTH
+		min_trim_length = MIN_TRIM_LENGTH,
+		utils_dir = UTILS_DIR
 	log:
 		"logs/{sample}_filter.log"
 	shell:
-		"small_rna_filter \
+		"module add python; "
+		"python3 {params.utils_dir}/small_rna_filter.py \
 		-f {params.filter_base} \
 		-s {params.size} \
 		-t {params.trim} \
@@ -82,7 +91,7 @@ rule butter_mapping_genome:
 		bamfile = "genome/{sample}_genome.bam",
 		bamidx = "genome/{sample}_genome.bam.bai"
 	params:
-		ref = refs[get_species("{sample}")],
+		ref = lambda wildcards: get_ref('{sample}'.format(sample = wildcards.sample)),
 		sample_name="{sample}"
 	log:
 		"logs/{sample}_map_genome.log"
@@ -181,6 +190,7 @@ rule get_sample_info:
 		dataset = DATASET,
 		sample_name = "{sample}"
 	run:
+		"module add samtools; "
 		shell('''telo_reads=$(wc -l < {input.telo_reads_file}); module add samtools/1.8 && samtools view -c {input.genome_bam} | awk -v var="$telo_reads" '{{ print "{params.dataset}_{params.sample_name}\t{params.dataset}\t{params.sample_name}\t"$0"\t"var }}' > {output}''')
 
 rule map_telo_reads_to_genome:
@@ -189,7 +199,7 @@ rule map_telo_reads_to_genome:
 		fasta = "fasta/{sample}_all.fa"
 	output: "telo/{sample}_genome.bam"
 	params:
-		idx = refs[get_species("{sample}")]
+		idx = lambda wildcards: get_ref('{sample}'.format(sample = wildcards.sample))
 	threads: 8
 	shell:
 		"module purge; " 
@@ -203,10 +213,11 @@ rule convert_data:
 		reads_file = "results/{sample}_reads.txt"
 	params:
 		dataset = DATASET,
-		sample_name = "{sample}"
+		sample_name = "{sample}",
+		utils_dir = UTILS_DIR
 	run:
 		shell('''module add samtools/1.8 && if [[ $(samtools view {input} | wc -l) -eq 0 ]]; then touch {output.alignment_file}; else samtools view {input} | awk -v OFS="\t" -v d={params.dataset} -v s={params.sample_name} '{{print d"_"s"_"$1,$3,$4,1-($2/16),$6}}' > {output.alignment_file}; fi''')
-		shell("compile_data -d {params.dataset} -b fasta/{params.sample_name} -o {output.reads_file}")
+		shell("module add python && python3 {params.utils_dir}/compile_data.py -d {params.dataset} -b fasta/{params.sample_name} -o {output.reads_file}")
 
 rule store_results:
 	input:
@@ -215,12 +226,19 @@ rule store_results:
 		sample_info = "sample_info/{sample}_info.txt"
 	output:
 		"results/{sample}.db"
+	param:
+		utils_dir = UTILS_DIR
 	shell:
-		"ngs_store -d {output} -s {input.sample_info} -r {input.reads_file} -a {input.alignment_file}"
+		"module add python; "
+		"python3 {params.utils_dir}/ngs_store.py -d {output} -s {input.sample_info} -r {input.reads_file} -a {input.alignment_file}"
 
 rule merge_db:
 	input:
 		expand("results/{sample}.db", sample = SAMPLES)
-	output: "results/" + DATASET + ".db"
+	output:
+		"results/" + DATASET + ".db"
+	params:
+		utils_dir = UTILS_DIR
 	shell:
-		"merge_db -o {output} {input}"
+		"module add python; "
+		"python3 {parmas.utils_dir}/merge_db.py -o {output} {input}"

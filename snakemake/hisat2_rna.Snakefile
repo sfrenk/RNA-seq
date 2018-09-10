@@ -61,7 +61,8 @@ if PAIRED:
 		log:
 			"logs/{sample}_trim.log"
 		shell:
-			"bbduk.sh -Xmx4g in1={input.read1} in2={input.read2} out1={output.out1} out2={output.out2} ref={params.adapter_file} ktrim=r overwrite=true k=23 maq=20 mink=11 hdist=1 > {log} 2>&1"
+			"module add bbmap; "
+			"bbduk.sh -Xmx4g in1={input.read1} in2={input.read2} out1={output.out1} out2={output.out2} ref={params.adapter_file} ktrim=r overwrite=true k=23 maq=20 mink=11 hdist=1 &> {log}"
 
 	rule hisat2_mapping:
 		input:
@@ -74,7 +75,9 @@ if PAIRED:
 		log:
 			"logs/{sample}_map.log"
 		threads: 8
-		shell: "hisat2 --max-intronlen 12000 --dta --no-mixed --no-discordant -p {threads} -x {params.idx_base} -1 {input.trimmed1} -2 {input.trimmed2} -S {output} > {log} 2>&1"
+		shell: 
+			"module add hisat2; "
+			"hisat2 --max-intronlen 12000 --dta --no-mixed --no-discordant -p {threads} -x {params.idx_base} -1 {input.trimmed1} -2 {input.trimmed2} -S {output} &> {log}"
 
 
 else:
@@ -89,7 +92,8 @@ else:
 		log:
 			"logs/{sample}_trim.log"
 		shell:
-			"bbduk.sh -Xmx4g in={input} out={output} ref={params.adapter_file} ktrim=r overwrite=true k=23 maq=20 mink=11 hdist=1 > {log} 2>&1"
+			"module add bbmap; "
+			"bbduk.sh -Xmx4g in={input} out={output} ref={params.adapter_file} ktrim=r overwrite=true k=23 maq=20 mink=11 hdist=1 &> {log}"
 
 	rule hisat2_mapping:
 		input:
@@ -101,7 +105,9 @@ else:
 		log:
 			"logs/{sample}_map.log"
 		threads: 8
-		shell: "hisat2 --max-intronlen 12000 --dta --no-mixed --no-discordant -p {threads} -x {params.idx_base} -U {input} -S {output} > {log} 2>&1"
+		shell:
+			"module add hisat2; " 
+			"hisat2 --max-intronlen 12000 --dta --no-mixed --no-discordant -p {threads} -x {params.idx_base} -U {input} -S {output} &> {log}"
 
 if REMOVE_RDNA == True:
 
@@ -113,6 +119,7 @@ if REMOVE_RDNA == True:
 		params:
 			rdna_bed = RDNA_BED
 		shell:
+			"module add samtools; "
 			"samtools view -bh -L {params.rdna_bed} {input} -U {output}"
 
 
@@ -124,6 +131,7 @@ if REMOVE_RDNA == True:
 		params:
 			rdna_bed = RDNA_BED
 		shell:
+			"module add samtools; "
 			"samtools view -bh -F 4 {input} | samtools sort -o {output} -"
 
 else:
@@ -134,6 +142,7 @@ else:
 		output:
 			"bam/{sample}.bam"
 		shell:
+			"module add samtools; "
 			"samtools view -bh -F 4 {input} | samtools sort -o {output} -"
 
 rule index_bam:
@@ -142,6 +151,7 @@ rule index_bam:
 	output:
 		"bam/{sample}.bam.bai" 
 	shell:
+		"module add samtools; "
 		"samtools index {input}"
 
 if COUNT_METHOD == "subread":
@@ -156,7 +166,8 @@ if COUNT_METHOD == "subread":
 			"logs/count.log"
 		threads: 8
 		shell:
-			"featureCounts -a {input.gtf} -M --fraction -o {output} -T {threads} -t exon -g gene_name {input.bamfiles} > {log} 2>&1"
+			"module add subread; "
+			"featureCounts -a {input.gtf} -M --fraction -o {output} -T {threads} -t exon -g gene_name {input.bamfiles} &> {log}"
 
 else:
 	rule stringtie_make:
@@ -167,9 +178,12 @@ else:
 			"stringtie/{sample}.gtf"
 		params:
 			gtf = GTF
+		log:
+			"logs/{sample}_stringtie_make.log"
 		threads: 8
 		shell:
-			"stringtie {input.bamfile} -p {threads} -o {output} -G {params.gtf}"
+			"module add stringtie; "
+			"stringtie {input.bamfile} -p {threads} -o {output} -G {params.gtf} &> {log}"
 
 	rule stringtie_merge:
 		input:
@@ -178,10 +192,13 @@ else:
 			"stringtie/stringtie_merged.gtf"
 		params:
 			gtf = GTF
+		logs:
+			"logs/stringtie_merge.log"
 		threads: 8
 		run:
-			shell("ls stringtie/*.gtf > gtf_files.txt")
-			shell("stringtie --merge -p {threads} -G {params.gtf} -o {output} gtf_files.txt")
+			"module add stringtie; "
+			"ls stringtie/*.gtf > gtf_files.txt; "
+			"stringtie --merge -p {threads} -G {params.gtf} -o {output} gtf_files.txt &> {log}"
 
 	rule count:
 		input:
@@ -190,7 +207,8 @@ else:
 		output:
 			"stringtie_count/{sample}/e2t.ctab"
 		log:
-			"logs/{sample}stringtie_count.log"
+			"logs/{sample}_stringtie_count.log"
 		threads: 8
 		shell:
-			"stringtie {input.bamfile} -p {threads} -B -e -o {output} -G {input.gtf}> {log} 2>&1"
+			"module add stringtie; "
+			"stringtie {input.bamfile} -p {threads} -B -e -o {output} -G {input.gtf} &> {log}"
