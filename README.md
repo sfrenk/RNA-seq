@@ -5,7 +5,7 @@ These pipelines have been written for use with the SLURM scheduling system, but 
 ## Installation
 
 ```
-git clone https://github.com/sfrenk/sTeloMap.
+git clone https://github.com/sfrenk/rna-seq_pipelines.git
 cd rna-seq_pipelines/
 bash install.sh
 ```
