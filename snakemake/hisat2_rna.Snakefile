@@ -46,7 +46,26 @@ elif COUNT_METHOD == "stringtie":
 else:
 	sys.exit("ERROR: Invalid COUNT_METHOD option. Choose subread or stringtie.")
 
+
+#### Mapping ####
+
 if PAIRED:
+
+	rule fastqc_pre_trim:
+		input:
+			read1 = BASEDIR + "/{sample}_1" + EXTENSION,
+			read2 = BASEDIR + "/{sample}_2" + EXTENSION
+		output:
+			html1 = "metrics/fastq/{sample}_1_fastqc.html",
+			html2 = "metrics/fastq/{sample}_2_fastqc.html",
+			zip1 = "metrics/fastq/{sample}_1_fastqc.zip",
+			zip2 = "metrics/fastq/{sample}_2_fastqc.zip"
+		threads: 4
+		log:
+			"logs/{sample}_fastqc_pre_trim.log"
+		shell:
+			"module add fastqc; "
+			"fastqc -o metrics/fastq {input.read1} {input.read2} &> {log}"
 
 	rule trim:
 		input:
@@ -63,6 +82,22 @@ if PAIRED:
 		shell:
 			"module add bbmap; "
 			"bbduk.sh -Xmx4g in1={input.read1} in2={input.read2} out1={output.out1} out2={output.out2} ref={params.adapter_file} ktrim=r overwrite=true k=23 maq=20 mink=11 hdist=1 &> {log}"
+
+	rule fastqc_post_trim:
+		input:
+			read1 = "trimmed/{sample}_1_trimmed.fastq",
+			read2 = "trimmed/{sample}_2_trimmed.fastq"
+		output:
+			html1 = "metrics/fastq/{sample}_1_trimmed_fastqc.html",
+			html2 = "metrics/fastq/{sample}_2_trimmed_fastqc.html",
+			zip1 = "metrics/fastq/{sample}_1_trimmed_fastqc.zip",
+			zip2 = "metrics/fastq/{sample}_2_trimmed_fastqc.zip"
+		threads: 4
+		log:
+			"logs/{sample}_fastqc_post_trim.log"
+		shell:
+			"module add fastqc; "
+			"fastqc -o metrics/fastq {input.read1} {input.read2} &> {log}"
 
 	rule hisat2_mapping:
 		input:
@@ -81,6 +116,20 @@ if PAIRED:
 
 
 else:
+
+	rule fastqc_pre_trim:
+		input:
+			BASEDIR + "/{sample}" + EXTENSION
+		output:
+			html = "metrics/fastq/{sample}_fastqc.html",
+			zipfile = "metrics/fastq/{sample}_fastqc.zip"
+		threads: 4
+		log:
+			"logs/{sample}_fastqc_pre_trim.log"
+		shell:
+			"module add fastqc; "
+			"fastqc -o metrics/fastq {input} &> {log}"
+
 	rule trim:
 		input:
 			BASEDIR + "/{sample}" + EXTENSION
@@ -94,6 +143,19 @@ else:
 		shell:
 			"module add bbmap; "
 			"bbduk.sh -Xmx4g in={input} out={output} ref={params.adapter_file} ktrim=r overwrite=true k=23 maq=20 mink=11 hdist=1 &> {log}"
+	
+	rule fastqc_post_trim:
+		input:
+			"trimmed/{sample}_trimmed.fastq"
+		output:
+			html = "metrics/fastq/{sample}_trimmed_fastqc.html",
+			zipfile = "metrics/fastq/{sample}_trimmed_fastqc.zip"
+		threads: 4
+		log:
+			"logs/{sample}_fastqc_post_trim.log"
+		shell:
+			"module add fastqc; "
+			"fastqc -o metrics/fastq {input} &> {log}"
 
 	rule hisat2_mapping:
 		input:
@@ -108,6 +170,9 @@ else:
 		shell:
 			"module add hisat2; " 
 			"hisat2 --max-intronlen 12000 --dta --no-mixed --no-discordant -p {threads} -x {params.idx_base} -U {input} -S {output} &> {log}"
+
+
+#### rDNA removal ####
 
 if REMOVE_RDNA == True:
 
@@ -153,6 +218,59 @@ rule index_bam:
 	shell:
 		"module add samtools; "
 		"samtools index {input}"
+
+rule bam_metrics:
+	input:
+		bamfile = "bam/{sample}.bam",
+		bamidx = "bam/{sample}.bam.bai"
+	output:
+		"metrics/bam/{sample}/qualimapReport.html"
+	params:
+		output_dir="metrics/bam/{sample}"
+	log:
+		"logs/{sample}_bam_metrics.log"
+	shell:
+		"module add qualimap; "
+		"qualimap bamqc -bam {input.bamfile} -outdir {params.output_dir} -gd HUMAN &> {log}"
+
+
+#### QC compilation ####
+
+if PAIRED:
+	rule multiqc:
+		input:
+			fastq_pre_trim_1 = expand("metrics/fastq/{sample}_1_fastqc.html", sample = SAMPLES),
+			fastq_pre_trim_2 = expand("metrics/fastq/{sample}_2_fastqc.html", sample = SAMPLES),
+			bam = expand("metrics/bam/{sample}/qualimapReport.html", sample = SAMPLES),
+			fastq_post_trim_1 = expand("metrics/fastq/{sample}_1_trimmed_fastqc.html", sample = SAMPLES),
+			fastq_post_trim_2 = expand("metrics/fastq/{sample}_2_trimmed_fastqc.html", sample = SAMPLES),
+			picard = expand("metrics/picard/{sample}_metrics.txt", sample = SAMPLES)
+		output:
+			"multiqc_report.html"
+		log:
+			"logs/multiqc.log"
+		shell:
+			"module purge; "
+			"module add multiqc; "
+			"multiqc -f metrics &> {log}"
+else:
+	rule multiqc:
+		input:
+			fastq_pre_trim = expand("metrics/fastq/{sample}_fastqc.html", sample = SAMPLES),
+			fastq_post_trim = expand("metrics/fastq/{sample}_trimmed_fastqc.html", sample = SAMPLES),
+			bam = expand("metrics/bam/{sample}/qualimapReport.html", sample = SAMPLES),
+			picard = expand("metrics/picard/{sample}_metrics.txt", sample = SAMPLES)
+		output:
+			"multiqc_report.html"
+		log:
+			"logs/multiqc.log"
+		shell:
+			"module purge; "
+			"module add multiqc; "
+			"multiqc -f metrics &> {log}"
+
+
+#### Assigning reads to features ####
 
 if COUNT_METHOD == "subread":
 	rule count:
